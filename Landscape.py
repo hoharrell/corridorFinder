@@ -1,6 +1,7 @@
-import math
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString
+from shapely.ops import split
 import matplotlib.pyplot as plt
+import itertools
 
 
 class Landscape:
@@ -8,45 +9,13 @@ class Landscape:
         self.polygons = polygons
 
 
-# class Polygon:
-#     def __init__(self, edges, cost):
-#         self.edges = edges
-#         self.cost = cost
-#     # def union(self, others):
-
-#     def intersect(self, other):
-#         x = 5
-
-
-class Edge:
-    def __init__(self, v1, v2):
-        self.v1 = v1
-        self.v2 = v2
-        self.length = math.sqrt((v1 + v2)**2)
-
-
-class Corridor:
-    def __init__(self, polygons):
-        self.polygons = polygons
-        self.width = 0
-        self.length = 0
-        self.totalCost = 0
-        for polygon in polygons:
-            self.totalCost += polygon.cost
-
-
-class Agent:
-    def __init__(self, diameter):
-        self.diameter = diameter
-
-
-p1 = Polygon([(1, 1), (-1, 2), (-2, -1), (0, 1)])
-p2 = Polygon([(-1, 1), (-2, 2), (-2, -2)])
-print(p1.intersects(p2))
-p3 = Polygon(
-    shell=[(0, 0), (0, 30), (30, 30), (30, 0), (0, 0)],
-    holes=[[(10, 10), (20, 10), (20, 20), (10, 20), (10, 10)]],
-)
+# p1 = Polygon([(1, 1), (-1, 2), (-2, -1), (0, 1)])
+# p2 = Polygon([(-1, 1), (-2, 2), (-2, -2)])
+# print(p1.intersects(p2))
+# p3 = Polygon(
+#     shell=[(0, 0), (0, 30), (30, 30), (30, 0), (0, 0)],
+#     holes=[[(10, 10), (20, 10), (20, 20), (10, 20), (10, 10)]],
+# )
 # print(p3.exterior)
 # for hole in p3.interiors:
 #     for coordinate in hole.coords:
@@ -72,43 +41,89 @@ def findBoundary(polygon):
     return boundary
 
 
-boundary = findBoundary(polygon)
-print(boundary)
-p1 = Polygon([(2.5, 3.5), (5.5, 4.5), (6, 6),
-             (10, 6), (11, 4), (9.5, 4.5), (6, 2)])
-p2 = Polygon([(0, 1), (1, 5), (4, 4), (1.5, 3.5), (3.5, 2.5), (3, 1.5)])
-p3 = Polygon([(4, 4), (1.5, 3.5), (3.5, 2.5), (3, 1.5), (11, 0), (11.5, 1.5),
-             (11, 2), (12, 2.5), (11.5, 3.5), (11, 4),
-             (9.5, 4.5), (6, 2), (2.5, 3.5)])
-p4 = Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
-             (11.5, 3.5), (11, 4), (11.5, 4.5), (14, 4), (13.5, 1)])
-x, y = p1.exterior.xy
-plt.plot(x, y)
-x, y = p2.exterior.xy
-plt.plot(x, y)
-x, y = p3.exterior.xy
-plt.plot(x, y)
-x, y = p4.exterior.xy
-plt.plot(x, y)
-plt.show()
-# Finds a valid gate pair for a pair
+# boundary = findBoundary(polygon)
+# print(boundary)
+polygons = []
+polygons.append(Polygon([(2.5, 3.5), (5.5, 4.5), (6, 6),
+                         (10, 6), (11, 4), (9.5, 4.5), (6, 2)]))
+polygons.append(
+    Polygon([(0, 1), (1, 5), (4, 4), (1.5, 3.5), (3.5, 2.5), (3, 1.5)]))
+polygons.append(Polygon([(4, 4), (1.5, 3.5), (3.5, 2.5), (3, 1.5), (11, 0),
+                        (11.5, 1.5), (11, 2), (12, 2.5), (11.5, 3.5), (11, 4),
+                         (9.5, 4.5), (6, 2), (2.5, 3.5)]))
+polygons.append(Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
+                         (11.5, 3.5), (11, 4), (11.5, 4.5), (14, 4),
+                         (13.5, 1)]))
+for polygon in polygons:
+    x, y = polygon.exterior.xy
+    plt.plot(x, y)
+# plt.show()
+
+
+# Finds all valid gates for a pair
 # (p1, p2) of polygons in the landscape
 
 
 def findGates(p1, p2):
-    # Step 1: Let # E_c be a set of continuous edges
-    # between p1 and p2
-    intersect = p1.intersection(p2)
-    if intersect.boundary.is_empty:
-        return
-    edges = list(intersect.geoms)
-    print(edges)
-    print()
+
+    # assumes edges of p1 are ordered sequentially
+
+    if p1.intersection(p2).boundary.is_empty:
+        return []
+    sharedEdges = list(p1.intersection(p2).geoms)
+    edgeList = []
+    while sharedEdges:
+        contiguousEdges = []
+        edge = sharedEdges[0]
+        contiguousEdges.append(edge)
+        sharedEdges.pop(0)
+        if (edge.touches(sharedEdges[0])):
+            while (sharedEdges and
+                   sharedEdges[0].touches(contiguousEdges[-1])):
+                contiguousEdges.append(sharedEdges[0])
+                sharedEdges.pop(0)
+        elif (edge.touches(sharedEdges[-1])):
+            while (sharedEdges and
+                   sharedEdges[-1].touches(contiguousEdges[-1])):
+                contiguousEdges.append(sharedEdges[-1])
+                sharedEdges.pop()
+        edgeList.append(contiguousEdges)
+    pseudoEdges = []
+    for edgeSet in edgeList:
+        pseudoEdges.append(connectEdges(edgeSet))
+    gates = []
+    for edge in pseudoEdges:
+        union = p1.union(p2)
+        if union.contains(edge):
+            gates.append(edge)
+        elif union.crosses(edge):
+            partition = list(split(edge, union).geoms)
+            for edge in partition:
+                gates.append(edge)
+            for i in range(len(partition)):
+                gateUnion = partition[i]
+                for j in range(i + 1, len(partition)):
+                    gateUnion = LineString(gateUnion.union(
+                        partition[j]).boundary.geoms)
+                    gates.append(gateUnion)
+    return gates
 
 
-findGates(p1, p2)
-findGates(p1, p3)
-findGates(p1, p4)
-findGates(p2, p3)
-findGates(p2, p4)
-findGates(p3, p4)
+def connectEdges(edgeSet):
+    if len(edgeSet) == 1:
+        return edgeSet[0]
+    point1 = edgeSet[0].boundary.difference(edgeSet[1])
+    point2 = edgeSet[-1].boundary.difference(edgeSet[-2])
+    connection = LineString([point1, point2])
+    return connection
+
+
+def findGatePairs(p1, p2, p3, gates_1_2, gates_2_3):
+    pass
+
+
+gates = []
+for i in range(len(polygons)):
+    for j in range(i + 1, len(polygons)):
+        gates.append(findGates(polygons[i], polygons[j]))
+triplets = list(itertools.combinations(polygons, 3))
