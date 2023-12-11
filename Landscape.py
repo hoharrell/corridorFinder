@@ -1,5 +1,5 @@
 from shapely.geometry import Polygon, LineString
-from shapely.ops import split
+from shapely.ops import split, unary_union, linemerge, polygonize
 import matplotlib.pyplot as plt
 import itertools
 
@@ -7,6 +7,9 @@ import itertools
 class Landscape:
     def __init__(self, polygons):
         self.polygons = polygons
+
+
+epsilon = 0.001
 
 
 # p1 = Polygon([(1, 1), (-1, 2), (-2, -1), (0, 1)])
@@ -54,9 +57,9 @@ polygons.append(Polygon([(4, 4), (1.5, 3.5), (3.5, 2.5), (3, 1.5), (11, 0),
 polygons.append(Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
                          (11.5, 3.5), (11, 4), (11.5, 4.5), (14, 4),
                          (13.5, 1)]))
-for polygon in polygons:
-    x, y = polygon.exterior.xy
-    plt.plot(x, y)
+# for polygon in polygons:
+#     x, y = polygon.exterior.xy
+#     plt.plot(x, y)
 # plt.show()
 
 
@@ -117,13 +120,86 @@ def connectEdges(edgeSet):
     connection = LineString([point1, point2])
     return connection
 
+# might have to do this as you go and store only gates / gate pairs
+# that have already been computed
 
-def findGatePairs(p1, p2, p3, gates_1_2, gates_2_3):
-    pass
+
+def computeGates(triplet, union, totalPolygons, gates):
+    A = triplet[0]
+    B = triplet[1]
+    C = triplet[2]
+    if (A > B):
+        temp = A
+        A = B
+        B = temp
+    gates_1_2 = gates[(int)((-1/2) * (A ** 2) + ((totalPolygons * 2 + 1)
+                                                 * A)/2 - totalPolygons + (B - A - 1))]
+    if (A != triplet[0]):
+        temp = A
+        A = B
+        B = temp
+    if (B > C):
+        temp = B
+        B = C
+        C = temp
+    gates_2_3 = gates[(int)((-1/2) * (B ** 2) + ((totalPolygons * 2 + 1)
+                                                 * B)/2 - totalPolygons + (C - B - 1))]
+    return findAllGatePairs(union, gates_1_2, gates_2_3)
 
 
-gates = []
-for i in range(len(polygons)):
-    for j in range(i + 1, len(polygons)):
-        gates.append(findGates(polygons[i], polygons[j]))
-triplets = list(itertools.combinations(polygons, 3))
+def findAllGatePairs(union, gates_1_2, gates_2_3):
+    gatePairs = []
+    for gateA in gates_1_2:
+        if union.contains(gateA):
+            for gateB in gates_2_3:
+                if union.contains(gateB):
+                    pair = []
+                    pair.append(gateA)
+                    pair.append(gateB)
+                    gatePairs.append(pair)
+    return gatePairs
+
+
+def findAllGates(polygons):
+    gates = []
+    for i in range(len(polygons)):
+        for j in range(i + 1, len(polygons)):
+            gates.append(findGates(polygons[i], polygons[j]))
+    return gates
+
+
+def findGatePairs(polygons, triplet, gates):
+    union = polygons[triplet[0] - 1].union(
+        polygons[triplet[1] - 1]).union(polygons[triplet[2]-1])
+    gatePairs = (computeGates(triplet, union, len(polygons), gates))
+    return gatePairs
+
+
+def findCorePolygon(polygons, triplet, gatePairs):
+    union = polygons[triplet[0] - 1].union(
+        polygons[triplet[1] - 1]).union(polygons[triplet[2] - 1])
+    lineSplitCollection = union.boundary
+    gateCollection = gatePairs[0][0]
+    for gatePair in gatePairs:
+        for gate in gatePair:
+            lineSplitCollection = lineSplitCollection.union(gate)
+            gateCollection = gateCollection.union(gate)
+
+    mergedLines = linemerge(lineSplitCollection)
+    borderLines = unary_union(mergedLines)
+    decomposition = list(polygonize(borderLines))
+    for polygon in list(decomposition):
+        if polygon.buffer(epsilon).covers(gateCollection):
+            corePolygon = polygon
+    return corePolygon
+
+
+triplet = [1, 3, 2]
+allGates = findAllGates(polygons)
+gatePairs = findGatePairs(polygons, triplet, allGates)
+corePolygon = findCorePolygon(polygons, triplet, gatePairs)
+x, y = corePolygon.exterior.xy
+plt.plot(x, y)
+plt.show()
+
+# triplets = list(itertools.combinations(polygons, 3))
