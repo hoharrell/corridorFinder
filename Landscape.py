@@ -1,7 +1,10 @@
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import Polygon, LineString, MultiPoint
 from shapely.ops import split, unary_union, linemerge, polygonize
 import matplotlib.pyplot as plt
+import numpy as np
+import triangle as tr
 import itertools
+from shapely.plotting import plot_polygon, plot_points
 
 
 class Landscape:
@@ -194,12 +197,66 @@ def findCorePolygon(polygons, triplet, gatePairs):
     return corePolygon
 
 
-triplet = [1, 3, 2]
+# A = dict(vertices=np.array(((0, 0), (1, 0), (1, 1), (0, 1))))
+# # A['segments'] = [[0, 1],]
+# B = tr.triangulate(A)
+# tr.compare(plt, A, B)
+# plt.show()
+
+triplet = [2, 3, 4]
 allGates = findAllGates(polygons)
 gatePairs = findGatePairs(polygons, triplet, allGates)
 corePolygon = findCorePolygon(polygons, triplet, gatePairs)
-x, y = corePolygon.exterior.xy
-plt.plot(x, y)
-plt.show()
+
+ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
+       (10, 8), (9, 7), (7.5, 4.5), (10, 2.5), (9, 0), (5, 0), (5.5, 1.5), (3.5, 1.5)]
+int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
+         (6, 5), (6, 3), (5.5, 3.5)][::-1]
+int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
+polygonWithHole = Polygon(ext, [int_1, int_2])
+
+# checkA = polygonWithHole.exterior
+# checkB = polygonWithHole.boundary
+# checkC = polygonWithHole.interiors
+# checkD = list(checkC)
+
+
+def triangulate(corePolygon, show):
+    coreVertices = []
+    for coordinate in list(corePolygon.exterior.coords):
+        coreVertices.append(coordinate)
+    coreSegments = [(i, i+1) for i in range(len(coreVertices)-1)]
+    for hole in list(corePolygon.interiors):
+        for coordinate in list(hole.coords):
+            coreSegments.append((len(coreVertices), len(coreVertices) + 1))
+            coreVertices.append(coordinate)
+        coreSegments.pop()
+    # will need to do a MultiLineString with the boundary and interior - might be different if it has holes - check
+    # will need to do something different for coreSegments in the case when the polygon has holes
+    # check = list(split(corePolygon.boundary, MultiPoint(coreVertices)).geoms)
+    # for line in check:
+    #     coreSegments.append(list(line.coords))
+    # coreSegments.append([i, i+1] for i in range(len(corePolygon.interiors)))
+
+    polygon = {
+        "vertices": coreVertices,
+        "segments": coreSegments
+    }
+    triangulation = tr.triangulate(polygon, 'p')
+    if (show):
+        tr.compare(plt, polygon, triangulation)
+        plt.show()
+    return triangulation
+    # return tr.triangulate(polygon, 'p')
+    # tr.compare(plt, C, B)
+    # plt.show()
+
+
+triangulation = triangulate(corePolygon, False)
+vertices = triangulation['vertices']
+for vertex in vertices:
+    print(vertex)
+triangles = triangulation['triangles']
+triangulation2 = triangulate(polygonWithHole, True)
 
 # triplets = list(itertools.combinations(polygons, 3))
