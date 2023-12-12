@@ -1,0 +1,13 @@
+print "starting  code"
+
+from multiprocessing import Pool
+pool = Pool(2)
+
+def f(x):
+	print "X is at "+str(x)
+    return x+1
+
+for i in (0, 100):
+	pool.map(f, i) 
+	
+print "ending code"

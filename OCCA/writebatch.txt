@@ -1,0 +1,69 @@
+################################################################
+##################### Triplet LP Batchfile Writer ########################
+################################################################
+#
+
+
+badpolys = [185, 190]
+# shared edges with holes:  
+#adjwithholes = [[19, 21], [27, 78], [75, 133], [139, 209], [193, 220], [300, 303],
+#[309, 334], [322, 327], [390, 456], [524, 582], [528, 532], [540, 639], 
+#[661, 670], [682, 692], [700, 760], [720, 808], [742, 774], [755, 757], 
+#[805, 860], [854, 887], [857, 858], [872, 891], [921, 941], [971, 972], 
+#[1014, 1059], [1014, 1067], [1108, 1119], [1116, 1152], [1153, 1178],
+#[1177, 1222], [1189, 1201], [1197, 1208], [1237, 1240], [1256, 1261], 
+#[1276, 1291], [1345, 1346]]
+
+#polywithholes =  [185, 241, 892, 984, 1113, 1257]
+
+
+#CURRENT STATUS: does NOT work for polys with holes
+# have up through optimal triangulation working
+################################################################
+#input: text files of polygon coordinates and triplets
+#output: text files of tripplet LPs
+
+print "Starting program"
+
+
+# polyfile="C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/clusterverts.txt"
+tripletfile="C:/Users/rachel/Desktop/clustertripsnew.txt"
+
+#get triplets
+triplets = []
+ff=open(tripletfile)
+for line in ff:
+	s = line.split()
+    # if int(s[0]) < int(s[2]):
+	if s[0] == '1363':
+		temptrip = [int(s[0]), int(s[1]), int(s[2])]
+		triplets.append(temptrip)
+	elif s[2] == '1363':
+		temptrip = [int(s[2]), int(s[1]), int(s[0])]
+		triplets.append(temptrip)
+	elif s[0] == '1364':
+		temptrip = [int(s[2]), int(s[1]), int(s[0])]
+		triplets.append(temptrip)
+	elif s[2] == '1364':
+		temptrip = [int(s[0]), int(s[1]), int(s[2])]
+		triplets.append(temptrip)
+ff.close()
+
+myfile="C:/Users/rachel/Desktop/expbatch1.txt"
+ff = open(myfile,'w')
+for t in range(0, len(triplets)): 
+    tripstr=str(triplets[t][0])+'_'+str(triplets[t][1])+'_'+str(triplets[t][2])
+    writeline='set logfile C:/rstjohn/ELD_Example_Exp/logs/trip'+tripstr+'.log\n'
+    ff.write(writeline)
+    writeline='read C:/rstjohn/ELD_Example_Exp/probs/trip_LP'+tripstr+'.cpx lp\n'
+    ff.write(writeline)
+    ff.write('Mipopt\n')
+    writeline='write C:/rstjohn/ELD_Example_Exp/sols/tripsol'+tripstr+'.cpx sol\n\n'
+    ff.write(writeline)
+print len(triplets)
+ff.close()    
+    
+print "End of program"
+
+
+

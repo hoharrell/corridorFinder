@@ -1,0 +1,179 @@
+# keep flow
+writeline = "XX"
+for t in tps:
+	for i in gates:
+		if 'in' in gates[i]:
+			for x1 in gates[i]["in"]:
+				if writeline == "XX": 
+					writeline = "Flow_Const_" + i + "_" + str(t) + ":      z"+ x1+ "_" + str(t)
+				else:
+					writeline = writeline + " + z" + x1+ "_" + str(t)
+				if len(writeline) > 50:
+					fw.write(writeline + "\n")
+					writeline = ""
+		if 'out' in gates[i]:
+			for x2 in gates[i]["out"]:
+				if writeline == "XX":
+					writeline = "Flow_Const_" + i + "_" + str(t) + ":      z"+ x1 + "_" + str(t)
+				elif gates[i]["in"] == []:
+					writeline = writeline + " + z" + x2+ "_" + str(t)
+				else:
+					writeline = writeline + " - z" + x2+ "_" + str(t)
+				if len(writeline) > 50:
+					fw.write(writeline + "\n")
+					writeline = ""
+		if writeline == "XX":
+			print gates[i]
+			print i
+			continue
+			# print "ERROR IN NETFLOW!"
+			# break
+		writeline = writeline + " = 0\n"
+		fw.write(writeline)
+		writeline = "XX"
+		
+		
+		
+		
+		#inject flow
+for t in tps:
+	writeline = 'Inject_Flow_' + str(t) + ':  v0_' + str(t)
+	gotgate = []
+	for g in gates: 
+		if gates[g]['arr'][0] == su:
+			writeline = writeline + " + y" + g + "_" + str(t)
+			if len(writeline) > 70:
+				fw.write(writeline + "\n")
+				writeline = ""
+	writeline = writeline + " = " + str(len(gpdict))
+	fw.write(writeline + '\n')
+
+#absorb flow
+for t in tps:
+	for g in gates:
+		if gates[g]['out'] != [] and eu != gates[g]['arr'][1]:
+			writeline = "AbsorbFlow_" + g + "_" + str(t) + ":   y" + g + "_" + str(t)
+			for gp in gates[g]['out']:
+				writeline = writeline + " - " + str(len(gpdict)) + "z" + gpdict[gp]['varid'] + "_" + str(t)
+				if len(writeline) > 70:
+					fw.write(writeline + "\n")
+					writeline = ""
+			writeline = writeline + " <= 0 \n"
+			fw.write(writeline)
+		
+
+#conserve flow
+for t in tps:
+	for g in gates:
+		if eu == gates[g]['arr'][1] or gates[g]['out'] == []:
+			continue
+		writeline = "Conserve_Flow_" +g + "_" + str(t) + ":   y" + g + "_" + str(t)
+		for gp in gates[g]['out']:
+			ind = str(gpdict[gp]['gp'][1]) + "_" + str(gpdict[gp]['gp'][2]) + "_" + str(gpdict[gp]['gp'][4])
+			writeline = writeline + " - z" +  gpdict[gp]['varid'] + "_" + str(t) + " - y" +  ind + "_" + str(t)
+		if len(writeline) > 70:
+			fw.write(writeline + "\n")
+			writeline = ""
+		writeline = writeline + " = 0 \n"
+		fw.write(writeline)
+		
+#overall flow
+for t in tps:
+	writeline = "Total_Flow_" + str(t) + ":    "
+	for gp in gpdict:
+		if writeline == "Total_Flow_" + str(t) + ":    ":
+			writeline = writeline + "z" + gpdict[gp]['varid'] + "_" + str(t) 
+		else:	
+			writeline = writeline + " + z" + gpdict[gp]['varid'] + "_" + str(t) 
+		if len(writeline) > 70:
+			fw.write(writeline + "\n")
+			writeline = ""
+	for g in gates:
+		if gates[g]['arr'][0] == su:
+			writeline = writeline + " - y" + g + "_" + str(t)
+			if len(writeline) > 70:
+				fw.write(writeline + "\n")
+				writeline = ""
+	writeline = writeline + " = 0\n"
+	fw.write(writeline)
+
+
+# y nonneg
+for t in tps:
+	for g in gates:
+		writeline = "Y_nonneg"+ g + "_"+ str(t) + ":   y" +  g + "_" + str(t) + "> = 0\n"
+		fw.write(writeline)
+		
+# v nonneg
+for t in tps:
+	writeline = "Nonneg_v0_" + str(t) + ":   v0_"+ str(t) + " >= 0\n"
+	fw.write(writeline)
+
+	
+	
+	#max incoming
+for t in tps:
+	for g in gates:
+		if gates[g]['in'] != []:
+			writeline = "Max_Inflow_" + g + "_" + str(t) + ":    "
+			for gp in gates[g]['in']:
+				if writeline == "Max_Inflow_" + g + "_" + str(t) + ":    ":
+					writeline = writeline + "z" + gpdict[gp]['varid'] + "_" + str(t)
+				else:
+					writeline = writeline + " + z" + gpdict[gp]['varid'] + "_" + str(t)
+				if len(writeline) > 70:
+					fw.write(writeline + "\n")
+					writeline = ""
+			writeline = writeline + "< = 1 \n"
+			fw.write(writeline)
+
+
+# one direction flow:
+gotgp = {}
+for t in tps:
+	for gp in gpdict:
+		oppgp = str(gpdict[gp]['gp'][2])+ "_" + str(gpdict[gp]['gp'][1])+ "_" + str( gpdict[gp]['gp'][0])+ "_" + str(gpdict[gp]['gp'][4])+ "_" + str(gpdict[gp]['gp'][3])
+		if gp not in gotgp and oppgp in gpdict:
+			writeline = "OneWayFLow_" + gpdict[gp]['varid'] + "_" + str(t) + ":    z" + gpdict[gp]['varid'] + "_" + str(t) + " + z" + gpdict[oppgp]['varid'] + "_" + str(t) + " <= 1\n"
+			fw.write(writeline)
+			gotgp[oppgp] = oppgp
+
+# push flow
+for t in tps:
+	for g in gates:
+		if eu ==  gates[g]['arr'][1] or su == gates[g]['arr'][0]:
+			continue
+		if gates[g]['in'] != []:
+			writeline = "PushFlow_" + g + "_" + str(t) + ":   "
+			for i in gates[g]['in']:
+				if writeline == "PushFlow_" + g + "_" + str(t) + ":   ":
+					writeline = writeline + "z" + gpdict[i]['varid'] + "_" + str(t)
+				else:
+					writeline = writeline + " + z" + gpdict[i]['varid'] + "_" + str(t)
+				if len(writeline) > 70:
+					fw.write(writeline + "\n")
+					writeline = ""
+			if gates[g]['out'] == []:
+				writeline = writeline + " = 0 \n"
+				fw.write(writeline)		
+		if gates[g]['out'] != []:
+			if gates[g]['in'] != []:
+				for j in gates[g]['out']:
+					writeline = writeline + " - z" + gpdict[j]['varid'] + "_" + str(t)
+				if len(writeline) > 70:
+					fw.write(writeline + "\n")
+					writeline = ""
+				writeline = writeline + " >= 0 \n"
+				fw.write(writeline)
+			else: 
+				writeline = "PushFlow_" + g + "_" + str(t) + ":   "
+				for j in gates[g]['out']:
+					if writeline == "PushFlow_" + g + "_" + str(t) + ":   ":
+						writeline = writeline + "z" + gpdict[j]['varid'] + "_" + str(t)
+					else:
+						writeline = writeline + " + z" + gpdict[j]['varid'] + "_" + str(t)
+					if len(writeline) > 70:
+						fw.write(writeline + "\n")
+						writeline = ""
+				writeline = writeline + " = 0 \n"
+				fw.write(writeline)			

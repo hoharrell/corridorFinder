@@ -1,0 +1,83 @@
+# fix SLU verts
+import polycode
+from shapely.geometry import * 
+
+parcels = polycode.polygons
+
+
+def getvertlist(d1):
+    #input: poly dict
+    #output: polygon
+    pli = []
+    li = []
+    d = copy.deepcopy(d1)
+    while len(d) > 0:
+		if pli == []:
+			for e in d:
+				pli = [d[e][0], d[e][1]]
+				pt1 = d[e][0]
+				pt2 = d[e][1]
+				del d[e]
+				break
+		while pt1 != pt2:
+			for e in d:
+				if d[e][0] == pli[-1] and d[e][1] != pli[-2]:
+					pli.append(d[e][1])
+					pt2 = d[e][1]
+					del d[e]
+					break
+				elif d[e][1] == pli[-1] and d[e][0] != pli[-2]:
+					pli.append(d[e][0])
+					pt2 = d[e][0]
+					del d[e]
+					break
+		if pt1 == pt2:
+			li.append(pli)
+			pli = []
+    if len(li) == 1:
+		return li[0]
+    else:
+		big = []
+		p0 = Polygon(li[0])
+		for i in range(1, len(li)):
+			if p0.contains(Polygon(li[i])):
+				big = li[0]
+			elif Polygon(li[i]).contains(p0):
+				big = li[i]
+		holes = li
+		holes.remove(big)
+		return big + holes
+
+outfile = open("", 'w')
+for p in parcels:
+	print "on parcel #"+str(p.index()) + " out of " + str(len(parcels))
+	for q in parcels:
+		if q!= p:
+			for qe in parcels[q]:
+				qedge = parcels[q][qe]
+				keepgoing = True
+				while keepgoing:
+					keepgoing = False
+					for pe in parcels[p]:
+						pedge = parcels[p][pe]
+						if qedge[0] not in pedge and Point(qedge[0]).distance(LineString(pedge)) < 0.0001:
+							for i in pedge:
+								newe = [qedge[0], pedge[i]]
+								parcels[p][str(newe)] = newe
+							del parcels[p][pe]
+							keepgoing = True
+							break
+						elif qedge[1] not in pedge and Point(qedge[1]).distance(LineString(pedge)) < 0.0001:
+							for i in pedge:
+								newe = [qedge[1], pedge[i]]
+								parcels[p][str(newe)] = newe
+							del parcels[p][pe]
+							keepgoing = True
+							break
+	vertli = getvertlist(parcels[p])
+	for i in vertli:
+		writeline =str(p) + "\t" + str(vertli[0]) + "\t" + str(vertli[1]) + "\n"
+		outfile.write(writeline)
+outfile.close()
+
+	

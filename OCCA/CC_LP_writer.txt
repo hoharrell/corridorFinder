@@ -1,0 +1,314 @@
+####Wildlife Corridor LP Writer Program ####
+#summary
+#inputs:    polygon ids, ages, areas, triplet widths, 
+#           and adjacencies .txt files
+#outputs:   CPLEX LP for max min corridor width st:budget
+
+###################### define and read in data ##########################
+
+unitids=[]      #list of unit ids
+clusters=[]
+clusterids=[]
+trips=[]        #list of feasible triplets
+tripwidth=[]
+areas=[]       #list of unit areas
+startunit=1363   #unit that can start the corridor
+endunit=1364    #unit that can end the corridor
+myM=10000   #arbitrary large number
+myBudget=7380 #roughly 15% of 49195.18 acres of total area
+
+print "Starting program"
+
+print "Getting data"
+##Get PolyIDS
+file=open("C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/ElD_WC_ids.txt")
+for line in file:
+    tempid=int(line)
+    unitids.append(tempid)
+    clusterids.append(tempid)
+    clusters.append([tempid])
+file.close()
+
+#get clusters
+file=open("C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/clusters.txt")
+for line in file:
+    temparr=[]
+    strarr=line.split()
+    for i in range(1, len(strarr)):
+        tempunit=int(strarr[i])
+        temparr.append(tempunit)
+    clusters.append(temparr)
+    clusterids.append(int(strarr[0]))
+file.close()
+print "Got cluster data"
+
+##get adjstart and adjend
+#adjstart=[1248, 1252, 1273, 1276, 1291, 1307, 1314, 1328, 1338]
+#adjend=[7, 13, 30, 44, 66, 105, 132, 144, 176, 193, 220, 235]
+#for i in range(0, len(clusters)):
+#    for j in range(0, len(adjstart)):
+#        if adjstart[j] in clusters[i]:
+#            adjstart.append(clusterids[i])
+#    for j in range(0, len(adjend)):
+#        if adjend[j] in clusters[i]:
+#            adjend.append(clusterids[i])
+#            
+#print(adjstart)
+#print(adjend)
+adjstart=[1248, 1252, 1273, 1276, 1291, 1307, 1314, 1328, 1338, 1774, 1782]
+adjend=[7, 13, 30, 44, 66, 105, 132, 144, 176, 193, 220, 235, 1366, 1371, 1372, 1372, 1380, 1381, 1398]
+
+#                        
+#
+#
+#
+#get areas
+unitareas=[]
+clustareas=[]
+file=open("C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/ElD_WC_acres.txt")
+for line in file:
+    strarr=line.split()
+    temp=int(strarr[0])
+    temparea=float(strarr[1])
+    if temp in unitids:
+        unitareas.append(temparea)
+file.close()
+for i in range(0, len(clusters)):
+    temparea=0
+    for j in range(0, len(unitids)):
+        if unitids[j] in clusters[i]:
+            temparea=temparea+unitareas[j]
+    clustareas.append(temparea)
+print "Got areas"
+
+#read in triplets and widths
+trips=[]
+tripwidths=[]
+file=open("C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/trip_widths.txt")
+templist=[]
+for i in range(0, len(adjstart)):
+    templist.append(adjstart[i])
+for i in range(0, len(adjend)):
+    templist.append(adjend[i])
+for line in file:
+    strarr=line.split()
+    strarr2=strarr[0].split("_")
+    trip1=int(strarr2[0])
+    trip2=int(strarr2[1])
+    trip3=int(strarr2[2])
+    temptrip=[trip1, trip2, trip3]
+    tempwidth=float(strarr[1])
+    if temptrip[0]==startunit and temptrip[1] in adjstart and temptrip[2] not in templist:
+        trips.append(temptrip)
+        tripwidth.append(tempwidth)
+    elif temptrip[0] in adjstart and temptrip[1] not in templist and temptrip[2] not in templist:
+        trips.append(temptrip)
+        tripwidth.append(tempwidth)
+    elif temptrip[0] not in templist and temptrip[1] not in templist and temptrip[2] not in templist:
+        trips.append(temptrip)
+        tripwidth.append(tempwidth)
+    elif temptrip[2] in adjend and temptrip[0] not in templist and temptrip[1] not in templist:
+        trips.append(temptrip)
+        tripwidth.append(tempwidth)
+    elif temptrip[1] in adjend and temptrip[2]==endunit and temptrip[0] not in templist:
+        trips.append(temptrip)
+        tripwidth.append(tempwidth)
+file.close()
+print "Got triplet data"
+
+
+#get pairs
+pairs=[]
+firstpr=[]
+secondpr=[]
+for j in range(0, len(trips)):
+    firstpr=[trips[j][0], trips[j][1]]
+    secondpr=[trips[j][1], trips[j][2]]
+    if firstpr not in pairs and startunit not in firstpr and endunit not in firstpr:
+        pairs.append(firstpr)
+    if secondpr not in pairs and startunit not in secondpr and endunit not in secondpr:
+        pairs.append(secondpr)
+print "got pairs"
+
+############################ write LP ##############################
+print "Writing LP"
+ff=open("C:/Users/rachel/Desktop/Work/WC_Stuff/El_Dorado_Exp/cluster_LP.cpx", 'w')
+
+
+# OBJECTIVE FUNCTION
+ff.write("MAX \nOBJECTIVE:\nv\n\nSubject to:\n")
+print("Objective written")
+
+# Budget constraint
+writeline="XX"
+cc=0
+currid=0
+currarea=0
+for j in range(0, len(trips)):
+    currid=trips[j][1]
+    tripstr=str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+    currarea=0
+    for i in range(0, len(clusterids)):
+        if clusterids[i]==currid:
+            currarea=clustareas[i]
+            break
+    if writeline=="XX":
+        writeline="Budget_Const:   "+str(currarea)+"z"+tripstr
+    else:
+        writeline=writeline+"+"+str(currarea)+"z"+tripstr
+    cc=cc+1
+    if cc>4:
+        ff.write(writeline+"\n")
+        writeline=""
+        cc=0
+writeline=writeline+"<="+str(myBudget)
+ff.write(writeline)
+print "Budget constraint written"
+
+#Nonneg v Constraint
+ff.write("\nNonneg_v:     v>=0")
+
+#v def constraints
+for j in range(0, len(trips)):
+    tripstr=str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+    mycoef=myM-tripwidth[j]
+    writeline="\nv_def_"+tripstr+":   v+"+str(mycoef)+"z"+tripstr+"<="+str(myM)
+    ff.write(writeline)
+print "V def constraints written"
+    
+#BEGIN CORRIDOR
+writeline="XX"
+cc=0
+for j in range(0, len(trips)):
+    if trips[j][0] == startunit and trips[j][2] not in adjstart:
+		tripstr=str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+		# print tripstr
+		if writeline=="XX":
+			writeline="Begin_Corridor_Const:    "+"z"+tripstr
+			cc=cc+1
+		else:
+			writeline=writeline+"+z"+tripstr
+			cc=cc+1
+		if cc>5:
+			ff.write(writeline+"\n")
+			writeline=""
+			cc=0
+if writeline == "XX":
+	print "Error: no starting triplets!"
+writeline=writeline+"=1\n"
+ff.write(writeline)
+writeline="XX"
+        
+        
+#END CORRIDOR
+writeline="XX"
+cc=0
+for j in range(0, len(trips)):
+    if trips[j][2] == endunit and trips[j][0] not in adjend:
+        tripstr=str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+        if writeline=="XX":
+            writeline="End_Corridor_Const:    "+"z"+tripstr
+            cc=cc+1
+        else:
+            writeline=writeline+"+z"+tripstr
+            cc=cc+1
+        if cc>5:
+            ff.write(writeline+"\n")
+            writeline=""
+            cc=0
+if writeline == "XX":
+	print "Error: no ending triplets!"
+writeline=writeline+"=1\n"
+ff.write(writeline)
+writeline="XX"
+
+#network flow constraints
+writeline="XX"
+cc=0
+negcheck=0
+for p in range(0, len(pairs)):
+    temp1=pairs[p][0]
+    temp2=pairs[p][1]
+    for j in range(0, len(trips)):
+        if trips[j][0]==temp1 and trips[j][1]==temp2:
+            if writeline=="XX":
+                writeline="Flow_Const_"+str(temp1)+"_"+str(temp2)+":      z"
+            else:
+                writeline=writeline+"+z"
+            writeline=writeline+str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+            cc=cc+1
+            if cc>6:
+                ff.write(writeline+"\n")
+                writeline=""
+                cc=0
+    for j in range(0, len(trips)):
+        if trips[j][1]==temp1 and trips[j][2]==temp2:
+            if writeline=="XX":
+                writeline="Flow_Const_"+str(temp1)+"_"+str(temp2)+":      z"
+                negcheck=1
+            elif negcheck==1:
+                writeline=writeline+"+z"
+            else:
+                 writeline=writeline+"-z"
+            writeline=writeline+str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+            cc=cc+1
+            if cc>6:
+                ff.write(writeline+"\n")
+                writeline=""
+                cc=0  
+    writeline=writeline+"=0\n"
+    ff.write(writeline)
+    writeline="XX"
+    negcheck=0  
+
+print("WC constraints written")
+
+
+#cluster constraints
+tempclustlist=[]
+temptriplist=[]
+for i in range(0, len(unitids)):
+    tempclustlist=[]
+    for j in range(0, len(clusters)):
+        if unitids[i] in clusters[j]:
+            tempclustlist.append(clusterids[j])
+    for l in range(0, 3):
+        temptriplist=[]
+        for m in range(0, len(trips)):
+            if trips[m][l] in tempclustlist:
+                temptriplist.append(trips[m])
+        writeline="XX"
+        cc=0
+        for k in range(0, len(temptriplist)):
+            tripstr=str(temptriplist[k][0])+"_"+str(temptriplist[k][1])+"_"+str(temptriplist[k][2])
+            if writeline=="XX":
+                writeline="Clust_Const_"+str(l)+"_"+str(unitids[i])+":   z"+tripstr
+            else:
+                writeline=writeline+"+z"+tripstr
+            cc=cc+1
+            if cc>6:
+                ff.write(writeline+"\n")
+                writeline=""
+                cc=0
+        if writeline!="XX":
+            writeline=writeline+"<=1\n"
+            ff.write(writeline)
+        
+print("cluster constraints written")
+        
+
+#BINARIES
+ff.write("\n\nBinary\n")
+writeline=""
+for j in range(0, len(trips)):
+    writeline=writeline+"     z"+str(trips[j][0])+"_"+str(trips[j][1])+"_"+str(trips[j][2])
+    cc=cc+1
+    if cc>4:
+        ff.write(writeline+ "\n")
+        writeline=""
+        cc=0
+ff.write(writeline)
+
+ff.write("\nEnd")
+print("LP successfully written. Yay!")
+ff.close()
