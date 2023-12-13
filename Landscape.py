@@ -1,7 +1,8 @@
-from shapely.geometry import Polygon, LineString, MultiPoint
+from shapely.geometry import Polygon, LineString, Point
 from shapely.ops import split, unary_union, linemerge, polygonize
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 import triangle as tr
 import itertools
 from shapely.plotting import plot_polygon, plot_points
@@ -203,18 +204,6 @@ def findCorePolygon(polygons, triplet, gatePairs):
 # tr.compare(plt, A, B)
 # plt.show()
 
-triplet = [2, 3, 4]
-allGates = findAllGates(polygons)
-gatePairs = findGatePairs(polygons, triplet, allGates)
-corePolygon = findCorePolygon(polygons, triplet, gatePairs)
-
-ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
-       (10, 8), (9, 7), (7.5, 4.5), (10, 2.5), (9, 0), (5, 0), (5.5, 1.5), (3.5, 1.5)]
-int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
-         (6, 5), (6, 3), (5.5, 3.5)][::-1]
-int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
-polygonWithHole = Polygon(ext, [int_1, int_2])
-
 # checkA = polygonWithHole.exterior
 # checkB = polygonWithHole.boundary
 # checkC = polygonWithHole.interiors
@@ -252,11 +241,113 @@ def triangulate(corePolygon, show):
     # plt.show()
 
 
-triangulation = triangulate(corePolygon, False)
-vertices = triangulation['vertices']
-for vertex in vertices:
-    print(vertex)
-triangles = triangulation['triangles']
-triangulation2 = triangulate(polygonWithHole, True)
+def midpoint(v1, v2):
+    return [(v1[0]+v2[0]) / 2, (v1[1] + v2[1]) / 2]
+
+
+def computeAngle(a, b, c):
+    angle = math.degrees(math.acos(
+        (a ** 2 + c ** 2 - b ** 2) / (2 * a * c)))
+    return angle
+
+
+def triangleOpposite(triangles, oppositeTriangle, edge):
+    for triangle in triangles.remove(oppositeTriangle):
+        if (edge[0] in triangle) and (edge[1] in triangle):
+            return triangle
+    return []
+
+
+def searchWidth(vertices, triangles, segments, triangle, C, edge, upperBound):
+    U = edge[0]
+    V = edge[1]
+    u, v, c = [V, C], [U, C], edge
+    length_u = math.dist(vertices[u[0]], vertices[u[1]])
+    length_v = math.dist(vertices[v[0]], vertices[v[1]])
+    length_c = math.dist(vertices[c[0]], vertices[c[1]])
+    U_angle = computeAngle(length_c, length_u, length_v)
+    V_angle = computeAngle(length_c, length_v, length_u)
+    if (U_angle >= 90) or (V_angle) >= 90:
+        return upperBound
+    d = Point(vertices[C]).distance(LineString(edge))
+    if d > upperBound:
+        return d
+    if edge in segments:
+        return d
+    # can maybe compute this beforehand and store it
+    newTriangle = triangleOpposite(triangles, triangle, edge)
+    if (newTriangle):
+        otherEdges = newTriangle.copy().remove(edge)
+        e1 = otherEdges[0]
+        e2 = otherEdges[1]
+        upperBound = searchWidth(
+            vertices, triangles, segments, newTriangle, C, e1, d)
+        searchWidth(vertices, triangles, segments, newTriangle, C, e2, d)
+    return d
+
+
+def findWidth(vertices, triangles, segments, triangle, e1, e2, e3):
+    for vertex in triangle:
+        if vertex not in e3:
+            C = vertex
+            break
+    a, b, c = e1, e2, e3
+    length_a = math.dist(vertices[a[0]], vertices[a[1]])
+    length_b = math.dist(vertices[b[0]], vertices[b[1]])
+    length_c = math.dist(vertices[c[0]], vertices[c[1]])
+    A_angle = computeAngle(length_c, length_a, length_b)
+    B_angle = computeAngle(length_c, length_b, length_a)
+    d = min(length_a, length_b)
+    if (A_angle >= 90) or (B_angle) >= 90:
+        return d
+    # if c is a constrained edge
+    if c in segments:
+        return Point(vertices[C]).distance(LineString([vertices[c[0]], vertices[c[1]]]))
+    return searchWidth(vertices, triangles, segments, triangle, C, c, d)
+
+
+def findTriangleEdgePairs(triangulation):
+    vertices = triangulation['vertices']
+    triangles = triangulation['triangles']
+    segments = triangulation['segments']
+    triangleEdgePairs = []
+    for triangle in triangles:
+        v1 = vertices[triangle[0]]
+        v2 = vertices[triangle[1]]
+        v3 = vertices[triangle[2]]
+        v_1_2 = midpoint(v1, v2)
+        v_2_3 = midpoint(v2, v3)
+        v_1_3 = midpoint(v1, v3)
+        e1 = [triangle[0], triangle[1]]
+        e2 = [triangle[1], triangle[2]]
+        e3 = [triangle[0], triangle[2]]
+        edgePairs = []
+        # edge 1, edge 2, width, length
+        edgePairs.append([e1, e2, findWidth(vertices, triangles,
+                                            segments, triangle, e1, e2, e3), math.dist(v_1_2, v_2_3)])
+        edgePairs.append([e2, e3, findWidth(vertices, triangles,
+                                            segments, triangle, e2, e3, e1), math.dist(v_2_3, v_1_3)])
+        edgePairs.append([e1, e3, findWidth(vertices, triangles,
+                                            segments, triangle, e1, e3, e2), math.dist(v_1_2, v_1_3)])
+        for pair in edgePairs:
+            triangleEdgePairs.append(pair)
+    return triangleEdgePairs
+
+
+triplet = [2, 3, 4]
+allGates = findAllGates(polygons)
+gatePairs = findGatePairs(polygons, triplet, allGates)
+corePolygon = findCorePolygon(polygons, triplet, gatePairs)
+triangulation = triangulate(corePolygon, True)
+triangleEdgePairs = findTriangleEdgePairs(triangulation)
+
+ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
+       (10, 8), (9, 7), (7.5, 4.5), (10, 2.5), (9, 0), (5, 0), (5.5, 1.5), (3.5, 1.5)]
+int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
+         (6, 5), (6, 3), (5.5, 3.5)][::-1]
+int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
+polygonWithHole = Polygon(ext, [int_1, int_2])
+
+# triangulation2 = triangulate(polygonWithHole, True)
 
 # triplets = list(itertools.combinations(polygons, 3))
