@@ -1,0 +1,4 @@
+#read in parcel data, stand data
+
+#new file: myid  origid   ha   amnt_g_lich    t_lich    resistance
+

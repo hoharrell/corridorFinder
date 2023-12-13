@@ -66,6 +66,14 @@ polygons.append(Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
 #     plt.plot(x, y)
 # plt.show()
 
+# IMPORTING THE GIS DATA AS POLYGONS IN EL DORADO DATA SET
+# sf = shp.Reader("/Users/r_busch/Documents/GitHub/corridorFinder/El Dorado.zip") #TODO redefine path
+
+# shapes = sf.shapes()
+
+# for shape in shapes:
+#     polygons.append(shape)
+# TODO COMMENT BACK IN WHEN READY
 
 # Finds all valid gates for a pair
 # (p1, p2) of polygons in the landscape

@@ -1,0 +1,32 @@
+code for:
+
+creating gate pairs, polys
+getting edge pairs, sub width and lengths
+writing lp
+
+
+def gatefinder(t):
+	#input: 3 poly ids
+	#output: dict of newpoly, edge pairs
+	a = copy.deepcopy(polygons[t[0]])
+	b = copy.deepcopy(polygons[t[1]])
+	c = copy.deepcopy(polygons[t[2]])
+	g1 = findgates(a, b)
+	g2 = findgates(b, c)
+	p = newpoly(a, b, c, g1, g2)
+	return p, g1, g2
+	
+def triangulate(e1, e2, p)
+	#input: poly dict
+	#output: dict of edge pairs, their width and length
+	
+def writeEPLP(p1, p2, p3)
+	#input: 3 poly ids
+	#output: LPs for every gate pair
+	print "writing ...")
+
+trips
+
+for t in trips:
+	writeEPLP(t) <- parallel!
+	
