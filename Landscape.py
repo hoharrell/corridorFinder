@@ -66,7 +66,7 @@ polygons.append(Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
 # plt.show()
 
 # IMPORTING THE GIS DATA AS POLYGONS IN EL DORADO DATA SET
-# sf = shp.Reader("/Users/r_busch/Desktop/MR/finalproject/El Dorado.zip")
+# sf = shp.Reader("/Users/r_busch/Documents/GitHub/corridorFinder/El Dorado.zip") #TODO redefine path
 
 # shapes = sf.shapes()
 
