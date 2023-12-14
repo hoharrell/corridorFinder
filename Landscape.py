@@ -259,9 +259,12 @@ def computeAngle(a, b, c):
     return angle
 
 
-def triangleOpposite(triangles, oppositeTriangle, edge):
-    for triangle in triangles.remove(oppositeTriangle):
-        if (edge[0] in triangle) and (edge[1] in triangle):
+def triangleOpposite(triangles, edge, oppositeTriangle):
+    for vertex in oppositeTriangle:
+        if vertex not in edge:
+            C = vertex
+    for triangle in triangles:
+        if (edge[0] in triangle) and (edge[1] in triangle) and C not in triangle:
             return triangle
     return []
 
@@ -275,22 +278,26 @@ def searchWidth(vertices, triangles, segments, triangle, C, edge, upperBound):
     length_c = math.dist(vertices[c[0]], vertices[c[1]])
     U_angle = computeAngle(length_c, length_u, length_v)
     V_angle = computeAngle(length_c, length_v, length_u)
-    if (U_angle >= 90) or (V_angle) >= 90:
+    if (U_angle + epsilon >= 90) or (V_angle + epsilon >= 90):
         return upperBound
-    d = Point(vertices[C]).distance(LineString(edge))
+    d = Point(vertices[C]).distance(LineString([vertices[U], vertices[V]]))
     if d > upperBound:
-        return d
-    if edge in segments:
+        return upperBound
+    # checks if edge is in segments
+    if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
         return d
     # can maybe compute this beforehand and store it
-    newTriangle = triangleOpposite(triangles, triangle, edge)
-    if (newTriangle):
-        otherEdges = newTriangle.copy().remove(edge)
-        e1 = otherEdges[0]
-        e2 = otherEdges[1]
+    newTriangle = triangleOpposite(triangles, edge, triangle)
+    if len(newTriangle) > 0:
+        for vertex in newTriangle:
+            if vertex not in triangle:
+                newVertex = vertex
+                break
+        e1 = [U, newVertex]
+        e2 = [V, newVertex]
         upperBound = searchWidth(
-            vertices, triangles, segments, newTriangle, C, e1, d)
-        searchWidth(vertices, triangles, segments, newTriangle, C, e2, d)
+            vertices, triangles, segments, newTriangle, C, e1, upperBound)
+        return searchWidth(vertices, triangles, segments, newTriangle, C, e2, upperBound)
     return d
 
 
@@ -300,16 +307,19 @@ def findWidth(vertices, triangles, segments, triangle, e1, e2, e3):
             C = vertex
             break
     a, b, c = e1, e2, e3
+    # could change to be more efficient if necessary
     length_a = math.dist(vertices[a[0]], vertices[a[1]])
     length_b = math.dist(vertices[b[0]], vertices[b[1]])
     length_c = math.dist(vertices[c[0]], vertices[c[1]])
     A_angle = computeAngle(length_c, length_a, length_b)
     B_angle = computeAngle(length_c, length_b, length_a)
     d = min(length_a, length_b)
-    if (A_angle >= 90) or (B_angle) >= 90:
+    if (A_angle + epsilon >= 90) or (B_angle + epsilon >= 90):
         return d
     # if c is a constrained edge
-    if c in segments:
+
+    # checks if c is in segments
+    if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
         return Point(vertices[C]).distance(LineString([vertices[c[0]], vertices[c[1]]]))
     return searchWidth(vertices, triangles, segments, triangle, C, c, d)
 
@@ -337,16 +347,30 @@ def findTriangleEdgePairs(triangulation):
                                             segments, triangle, e2, e3, e1), math.dist(v_2_3, v_1_3)])
         edgePairs.append([e1, e3, findWidth(vertices, triangles,
                                             segments, triangle, e1, e3, e2), math.dist(v_1_2, v_1_3)])
+        # maybe should group by triangle instead
         for pair in edgePairs:
             triangleEdgePairs.append(pair)
     return triangleEdgePairs
+
+
+def removeHoleTriangles(corePolygon, triangulation):
+    vertices = triangulation['vertices']
+    keptTriangles = []
+    for triangle in triangulation['triangles']:
+        polygon = Polygon([vertices[vertex]
+                          for vertex in triangle])
+        if corePolygon.buffer(epsilon).covers(polygon):
+            keptTriangles.append(triangle)
+    triangulation['triangles'] = np.array(keptTriangles)
+    return triangulation
 
 
 triplet = [2, 3, 4]
 allGates = findAllGates(polygons)
 gatePairs = findGatePairs(polygons, triplet, allGates)
 corePolygon = findCorePolygon(polygons, triplet, gatePairs)
-triangulation = triangulate(corePolygon, True)
+triangulation = removeHoleTriangles(
+    corePolygon, triangulate(corePolygon, False))
 triangleEdgePairs = findTriangleEdgePairs(triangulation)
 
 ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
@@ -356,6 +380,9 @@ int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
 int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
 polygonWithHole = Polygon(ext, [int_1, int_2])
 
-# triangulation2 = triangulate(polygonWithHole, True)
 
+triangulation2 = triangulate(polygonWithHole, False)
+triangulation2 = removeHoleTriangles(polygonWithHole, triangulation2)
+
+triangleEdgePairs2 = findTriangleEdgePairs(triangulation2)
 # triplets = list(itertools.combinations(polygons, 3))
