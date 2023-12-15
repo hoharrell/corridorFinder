@@ -1,4 +1,4 @@
-from shapely.geometry import Polygon, LineString, Point
+from shapely.geometry import Polygon, LineString, Point, MultiLineString
 from shapely.ops import split, unary_union, linemerge, polygonize
 import matplotlib.pyplot as plt
 import numpy as np
@@ -65,6 +65,18 @@ polygons.append(Polygon([(11, 0), (11.5, 1.5), (12.5, 2), (12, 2.5),
 #     x, y = polygon.exterior.xy
 #     plt.plot(x, y)
 # plt.show()
+examplePolygons = []
+examplePolygons.append(
+    Polygon([(4, 0), (0, 3), (0, 15), (2, 16), (7, 16), (9, 8), (5, 5)]))
+examplePolygons.append(Polygon([(13, 1), (9, 8), (7, 16), (9, 19), (14, 21), (
+    17, 17), (18, 15), (15, 16), (15, 15), (17, 13), (14, 9), (19, 2)]))
+examplePolygons.append(Polygon([(18, 15), (17, 17), (26, 20), (29.5, 19), (29, 16), (31, 12), (32, 10), (29, 6), (
+    25, 0), (19, 2), (14, 9), (17, 13), (19, 11), (22, 14)], [[(22, 10), (23, 6), (28, 9), (26, 12), (24, 10)]]))
+examplePolygons.append(Polygon(
+    [(32, 10), (29, 16), (29.5, 19), (30, 21), (34, 20), (34, 18), (33, 17), (36, 15)]))
+# for polygon in examplePolygons:
+#     plot_polygon(polygon)
+# plt.show()
 
 # IMPORTING THE GIS DATA AS POLYGONS IN EL DORADO DATA SET
 # sf = shp.Reader("/Users/r_busch/Documents/GitHub/corridorFinder/El Dorado.zip") #TODO redefine path
@@ -85,7 +97,11 @@ def findGates(p1, p2):
 
     if p1.intersection(p2).boundary.is_empty:
         return []
-    sharedEdges = list(p1.intersection(p2).geoms)
+    intersection = p1.intersection(p2)
+    if (isinstance(intersection, MultiLineString)):
+        sharedEdges = list(intersection.geoms)
+    else:
+        return [intersection]
     edgeList = []
     while sharedEdges:
         contiguousEdges = []
@@ -364,6 +380,14 @@ def removeHoleTriangles(corePolygon, triangulation):
     triangulation['triangles'] = np.array(keptTriangles)
     return triangulation
 
+
+triplet = [2, 3, 4]
+allGates = findAllGates(examplePolygons)
+gatePairs = findGatePairs(examplePolygons, triplet, allGates)
+corePolygon = findCorePolygon(examplePolygons, triplet, gatePairs)
+triangulation = removeHoleTriangles(
+    corePolygon, triangulate(corePolygon, True))
+triangleEdgePairs = findTriangleEdgePairs(triangulation)
 
 triplet = [2, 3, 4]
 allGates = findAllGates(polygons)
