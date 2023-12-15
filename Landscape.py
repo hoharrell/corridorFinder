@@ -6,6 +6,8 @@ import math
 import triangle as tr
 import itertools
 from shapely.plotting import plot_polygon, plot_points
+import shapefile as shp
+from ortools.linear_solver import pywraplp as linear
 
 
 class Landscape:
@@ -379,6 +381,37 @@ def removeHoleTriangles(corePolygon, triangulation):
             keptTriangles.append(triangle)
     triangulation['triangles'] = np.array(keptTriangles)
     return triangulation
+
+
+
+
+def constructOptimalRoute(triangleEdgePairs, maxLength, triangulation): # widest route with constrained length
+    onOptimalPath = []
+    triangles = triangulation['triangles']
+    solver = linear.Solver.CreateSolver("GLOP")
+    if not solver:
+        return
+    
+    # declare variables below
+    Z = solver.NumVar(0, solver.infinity(), "Z")
+    for triangle in triangles:
+        # instantiate a variable for each pair
+        pass
+    
+
+    # check number of variables (from guide)
+    print("Number of variables =", solver.NumVariables()) 
+
+    #define constraints of variables
+
+
+
+    objective = solver.Objective()
+    # input coefficients of variables for objective func.
+    objective.SetMaximization()
+
+
+
 
 
 triplet = [2, 3, 4]
