@@ -385,30 +385,29 @@ def removeHoleTriangles(corePolygon, triangulation):
 
 
 
-def constructOptimalRoute(triangleEdgePairs, maxLength, triangulation): # widest route with constrained length
+def constructOptimalRoute(triangleEdgePairs, maxLength): # widest route with constrained length
+    edgePairs = [] * triangleEdgePairs.size()
     onOptimalPath = []
-    triangles = triangulation['triangles']
-    solver = linear.Solver.CreateSolver("GLOP")
+
+    
+    solver = linear.Solver.CreateSolver("SAT")
     if not solver:
         return
     
-    # declare variables below
-    Z = solver.NumVar(0, solver.infinity(), "Z")
-    for triangle in triangles:
-        # instantiate a variable for each pair
-        pass
+    infinity = solver.infinity()
     
+    # declare variables below
+    Z = solver.IntVar(0.0, infinity, "Z")
+    M = solver.IntVar(0.0, infinity, "M")
+    for edgePair in len(triangleEdgePairs):
+        edgePairs[i] = solver.IntVar(0.0, infinity, triangleEdgePairs[edgePair].toString())
 
-    # check number of variables (from guide)
-    print("Number of variables =", solver.NumVariables()) 
 
     #define constraints of variables
 
 
 
-    objective = solver.Objective()
-    # input coefficients of variables for objective func.
-    objective.SetMaximization()
+    solver.Maximize()
 
 
 
