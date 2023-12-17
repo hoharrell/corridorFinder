@@ -1,4 +1,4 @@
-from shapely.geometry import Polygon, LineString, Point, MultiLineString
+from shapely.geometry import mapping, Polygon, LineString, Point, MultiLineString
 from shapely.ops import split, unary_union, linemerge, polygonize
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +9,7 @@ import itertools
 from shapely.plotting import plot_polygon, plot_points
 import shapefile as shp
 from ortools.linear_solver import pywraplp as linear
+import fiona
 from ortools.linear_solver import pywraplp
 
 
@@ -52,6 +53,86 @@ def findBoundary(polygon):
     for hole in polygon.interiors:
         boundary.append(hole)
     return boundary
+
+
+
+def importData():
+    # imports the data from the zipped shapefile and returns 
+    # a list of polygons contained in the shapefile, as shapely
+    # Polygon objects.
+    sf = shp.Reader("./El Dorado.zip")
+
+    print(sf.records)
+    polygons = []
+    shapes = sf.shapes()
+
+    
+    for i in range(len(shapes)):
+        # for j in range(len(shapes[i].points)):
+        polygon = Polygon(shapes[i].points)
+        polygons.append(polygon)
+
+    return polygons
+
+
+def clusterMaker(polygons):
+    # takes as input a collection of polygons, and combines them together
+    # in as many was as are possible to create clusters of polygons
+    # these clusters will overlap each other, but this is my understanding
+    # of the process used in the paper. Also needs testing on the data.
+    clusters = []
+    for polygon_a in polygons:
+        for polygon_b in polygons:
+            if not polygon_b.equals(polygon_a):
+                if polygon_a.touches(polygon_b) \
+                        and (combinePolygons(polygon_a, polygon_b).area <= 200000):
+                    clusters.append(combinePolygons(polygon_a, polygon_b))
+                else: 
+                    clusters.append(polygon_a)
+    for cluster in clusters:
+        while(cluster.area <= 200000):
+            for poly in polygons:
+                if cluster.touches(poly):
+                    if (combinePolygons(cluster, poly).area <= 200000):
+                        clusters.append(combinePolygons(cluster, poly))
+
+    return clusters
+
+
+
+
+def combinePolygons(polyA, polyB):
+    # combines two shapley polygons and returns a single polygon.
+    # has not been sufficiently tested yet
+    newList = ()
+    for coordB in polyB.coords:
+        for coordA in polyA.coords:
+            if (coordB != coordA):
+                newList = newList + coordB
+                newList = newList + coordA
+
+    combined = Polygon(newList)            
+    
+    return combined
+
+
+def exportData(polygons):
+    # takes in a collection of polygons and exports them to an ESRI
+    # shapefile. Worked when tested on the El dorado data set that had
+    # been converted into shapely polygons.
+    schema = {
+        'geometry': 'Polygon',
+        'properties': {'id': 'int'},
+    }
+
+    with fiona.open('./testfile.shp', 
+                    'w', 'ESRI Shapefile', schema) as c:
+        for poly in polygons:
+            c.write({
+                'geometry':mapping(poly),
+                'properties': {'id':polygons.index(poly)}
+                    })
+            
 
 
 # boundary = findBoundary(polygon)
