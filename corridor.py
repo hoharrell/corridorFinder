@@ -1,5 +1,4 @@
-import shapefile as shp # import package for shapefiles.
-
+import shapefile as shp  # import package for shapefiles.
 
 
 sf = shp.Reader("/Users/r_busch/Desktop/MR/finalproject/El Dorado.zip")

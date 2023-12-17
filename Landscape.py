@@ -5,7 +5,9 @@ import numpy as np
 import math
 import triangle as tr
 import itertools
+# import shapefile as shp TODO uncomment to test data importing.
 from shapely.plotting import plot_polygon, plot_points
+from ortools.linear_solver import pywraplp
 
 
 class Landscape:
@@ -14,6 +16,8 @@ class Landscape:
 
 
 epsilon = 0.001
+maxLength_triplet = 30  # arbitrary value, change later
+maxLength_overall = 400  # arbitrary value, change later
 
 
 # p1 = Polygon([(1, 1), (-1, 2), (-2, -1), (0, 1)])
@@ -78,17 +82,19 @@ examplePolygons.append(Polygon(
 #     plot_polygon(polygon)
 # plt.show()
 
-# IMPORTING THE GIS DATA AS POLYGONS IN EL DORADO DATA SET
-# sf = shp.Reader("/Users/r_busch/Documents/GitHub/corridorFinder/El Dorado.zip") #TODO redefine path
 
-# shapes = sf.shapes()
+def importData():
+    # imports the data from the zipped shapefile and returns a list of polygons.
+    sf = shp.Reader("./El Dorado.zip")
 
-# for shape in shapes:
-#     polygons.append(shape)
-# TODO COMMENT BACK IN WHEN READY
+    polygons = []
+    shapes = sf.shapes()
 
-# Finds all valid gates for a pair
-# (p1, p2) of polygons in the landscape
+    for i in range(len(shapes)):
+        polygon = Polygon(shapes[i].points)
+        polygons.append(polygon)
+
+    return polygons
 
 
 def findGates(p1, p2):
@@ -340,6 +346,12 @@ def findWidth(vertices, triangles, segments, triangle, e1, e2, e3):
     return searchWidth(vertices, triangles, segments, triangle, C, c, d)
 
 
+def orderEdge(edge):
+    if edge[0] > edge[1]:
+        return edge[::-1]
+    return edge
+
+
 def findTriangleEdgePairs(triangulation):
     vertices = triangulation['vertices']
     triangles = triangulation['triangles']
@@ -352,9 +364,9 @@ def findTriangleEdgePairs(triangulation):
         v_1_2 = midpoint(v1, v2)
         v_2_3 = midpoint(v2, v3)
         v_1_3 = midpoint(v1, v3)
-        e1 = [triangle[0], triangle[1]]
-        e2 = [triangle[1], triangle[2]]
-        e3 = [triangle[0], triangle[2]]
+        e1 = orderEdge([triangle[0], triangle[1]])
+        e2 = orderEdge([triangle[1], triangle[2]])
+        e3 = orderEdge([triangle[0], triangle[2]])
         edgePairs = []
         # edge 1, edge 2, width, length
         edgePairs.append([e1, e2, findWidth(vertices, triangles,
@@ -381,32 +393,438 @@ def removeHoleTriangles(corePolygon, triangulation):
     return triangulation
 
 
-triplet = [2, 3, 4]
-allGates = findAllGates(examplePolygons)
-gatePairs = findGatePairs(examplePolygons, triplet, allGates)
-corePolygon = findCorePolygon(examplePolygons, triplet, gatePairs)
-triangulation = removeHoleTriangles(
-    corePolygon, triangulate(corePolygon, True))
-triangleEdgePairs = findTriangleEdgePairs(triangulation)
+def findMaxWidth(triangleEdgePairs):
+    maxWidth = 0
+    for edgePair in triangleEdgePairs:
+        if edgePair[2] > maxWidth:
+            maxWidth = edgePair[2]
+    return maxWidth
 
-triplet = [2, 3, 4]
+# triplet = [2, 3, 4]
+# allGates = findAllGates(examplePolygons)
+# gatePairs = findGatePairs(examplePolygons, triplet, allGates)
+# corePolygon = findCorePolygon(examplePolygons, triplet, gatePairs)
+# triangulation = removeHoleTriangles(
+#     corePolygon, triangulate(corePolygon, True))
+# triangleEdgePairs = findTriangleEdgePairs(triangulation)
+
+
+# ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
+#        (10, 8), (9, 7), (7.5, 4.5), (10, 2.5), (9, 0), (5, 0), (5.5, 1.5), (3.5, 1.5)]
+# int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
+#          (6, 5), (6, 3), (5.5, 3.5)][::-1]
+# int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
+# polygonWithHole = Polygon(ext, [int_1, int_2])
+
+
+# triangulation2 = triangulate(polygonWithHole, False)
+# triangulation2 = removeHoleTriangles(polygonWithHole, triangulation2)
+
+# triangleEdgePairs2 = findTriangleEdgePairs(triangulation2)
+
+def updateEdgeDict(edgeDict, e1, e2, var):
+    # 0 indicates a var is leaving an edge
+    # 1 indicates a var is entering an edge
+
+    e1Key = '{}{}'.format(e1[0], e1[1])
+    e2Key = '{}{}'.format(e2[0], e2[1])
+    if e1Key in edgeDict:
+        edgeDict[e1Key].append([var, 0])
+    else:
+        edgeDict[e1Key] = [[var, 0]]
+    if e2Key in edgeDict:
+        edgeDict[e2Key].append([var, 1])
+    else:
+        edgeDict[e2Key] = [[var, 1]]
+
+
+def constructOptimalRoute(triangleEdgePairs, maxWidth, maxLength, gatePair):
+
+    solver = pywraplp.Solver.CreateSolver("SAT")
+    if not solver:
+        return
+
+    infinity = solver.infinity()
+
+    # declare variables below
+    Z = solver.NumVar(0.0, infinity, "Z")
+    M = maxWidth
+    vars = []
+    edgeDict = {}
+    for i, pair in enumerate(triangleEdgePairs):
+        vars.append([solver.IntVar(
+            0.0, 1.0, 'Edge Pair ({}, {}) to ({}, {})'.format(pair[0][0], pair[0][1], pair[1][0], pair[1][1])), pair[3]])
+        updateEdgeDict(edgeDict, pair[0], pair[1], vars[i][0])
+    print("Number of variables =", solver.NumVariables())
+
+    # define constraints of variables
+
+    # minimum width constraint
+    for i, var in enumerate(vars):
+        solver.Add(Z - M <= (triangleEdgePairs[i][2] - M) * var[0])
+    print("Number of constraints =", solver.NumConstraints())
+
+    # max length constraint
+    constraint_expr = \
+        [var[1] * var[0] for var in vars]
+    solver.Add(sum(constraint_expr) <= maxLength)
+
+    # starting gate constraint
+    startGateKey = '{}{}'.format(gatePair[0][0], gatePair[0][1])
+    leavingStartVars = []
+    for edge in edgeDict[startGateKey]:
+        if edge[1] == 0:
+            leavingStartVars.append(edge[0])
+    constraint_expr = \
+        [var for var in leavingStartVars]
+    solver.Add(sum(constraint_expr) == 1)
+
+    # ending gate constraint
+
+    endGateKey = '{}{}'.format(gatePair[1][0], gatePair[1][1])
+    enteringEndVars = []
+    for edge in edgeDict[endGateKey]:
+        if edge[1] == 1:
+            enteringEndVars.append(edge[0])
+    constraint_expr = \
+        [var for var in enteringEndVars]
+    solver.Add(sum(constraint_expr) == 1)
+
+    # connectivity constraint
+    for edge, connections in edgeDict.items():
+        if edge != endGateKey and edge != startGateKey:
+            leaving = []
+            entering = []
+            for var in connections:
+                if var[1] == 0:
+                    leaving.append(var[0])
+                else:
+                    entering.append(var[0])
+            leaving_expr = \
+                [var for var in leaving]
+            entering_expr = \
+                [var for var in entering]
+            solver.Add(sum(entering_expr) - sum(leaving_expr) == 0)
+    print("Number of constraints =", solver.NumConstraints())
+
+    solver.Maximize(Z)
+    # print(solver.ExportModelAsLpFormat(False).replace(
+    #     '\\', '').replace(',_', ','), sep='\n')
+
+    print(f"Solving with {solver.SolverVersion()}")
+    status = solver.Solve()
+    if status == pywraplp.Solver.OPTIMAL:
+        print("Solution:")
+        print("Objective value =", solver.Objective().Value())
+        print("Z =", Z.solution_value())
+        includedEdgePairs = []
+        length = 0
+        for var in vars:
+            if var[0].solution_value() == 1:
+                includedEdgePairs.append(var)
+                length += var[1]
+        return [solver.Objective().Value(), length]
+    else:
+        print("The problem does not have an optimal solution.")
+
+
+def addKey(gateDict, gate1, gate2, routeVar):
+    startKey = '{}{}{}'.format(gate1[0], gate1[1], gate1[2])
+    if startKey in gateDict:
+        gateDict[startKey].append([routeVar, 0])
+    else:
+        gateDict[startKey] = [[routeVar, 0]]
+    endKey = '{}{}{}'.format(gate2[0], gate2[1], gate2[2])
+    if endKey in gateDict:
+        gateDict[endKey].append([routeVar, 1])
+    else:
+        gateDict[endKey] = [[routeVar, 1]]
+
+
+def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels, polygons, costs, budget):
+    # assuming route is [gate1[p1, p2, gate#], gate2[p1, p2, gate#], width, length]
+    # assuming parcels is [parcel1[p1, p2, p3, ...], parcel2[p1, p2, p3, ...], ...]
+    varDict = {}
+    for polygon in polygons:
+        varDict[polygon] = []
+    gateDict = {}
+    solver = pywraplp.Solver.CreateSolver("SCIP")
+    if not solver:
+        return
+    infinity = solver.infinity()
+    W = solver.NumVar(0.0, infinity, "W")
+    D = maxWidth
+    routeVars = []
+    startingGates = []
+    endingGates = []
+    for i, route in enumerate(optimalRoutes):
+        routeVars.append([solver.IntVar(
+            0.0, 1.0, 'Gate {}-{}-{} to Gate {}-{}-{}'.format
+            (route[0][0], route[0][1], route[0][2], route[1][0], route[1][1], route[1][2])),
+            route[0][0], route[0][1], route[1][1]], route[3])
+        varDict[route[0][0]].append(routeVars[i])
+        varDict[route[0][1]].append(routeVars[i])
+        varDict[route[1][1]].append(routeVars[i])
+
+        if route[0][0] == startPolygon:
+            startingGates.append(routeVars[i][0])
+        if route[1][1] == endPolygon:
+            endingGates.append(routeVars[i][0])
+        gateDict = addKey(gateDict, route[0], route[1], routeVars[i][0])
+    # should be polygons + 1
+    print("Number of variables =", solver.NumVariables())
+    # minimum width constraint
+    for i, routeVar in enumerate(routeVars):
+        solver.Add(W - D <= (optimalRoutes[i][2] - D) * routeVar[0])
+    print("Number of constraints =", solver.NumConstraints())
+    # maximum length constraint
+    constraint_expr = \
+        [optimalRoutes[i][3] * routeVar[0]
+            for i, routeVar in enumerate(routeVars)]
+    solver.Add(sum(constraint_expr) <= maxLength)
+    print("Number of constraints =", solver.NumConstraints())
+    # starting gates constraint
+    constraint_expr = \
+        [gate for gate in startingGates]
+    solver.Add(sum(constraint_expr) == 1)
+    print("Number of constraints =", solver.NumConstraints())
+    # ending gates constraint
+    constraint_expr = \
+        [gate for gate in endingGates]
+    solver.Add(sum(constraint_expr) == 1)
+    print("Number of constraints =", solver.NumConstraints())
+
+    # Connectivity constraints
+
+    for gate, varList in gateDict.items():
+        if int(gate[0]) != startPolygon and int(gate[1]) != endPolygon:
+            starting = []
+            ending = []
+            for var in varList:
+                if var[1] == 0:
+                    starting.append(var)
+                else:
+                    ending.append(var)
+            starting_expr = \
+                [var[0] for var in starting]
+            ending_expr = \
+                [var[0] for var in ending]
+            solver.Add(sum(starting_expr) - sum(ending_expr) == 0)
+    print("Number of constraints =", solver.NumConstraints())
+
+    # Parcel Constraints
+
+    for parcel in parcels:
+        vars = set()
+        for polygon in parcel:
+            for var in (varDict[polygon]):
+                vars.add(var[0])
+        constraint_expr = \
+            [var for var in vars]
+        solver.Add(sum(constraint_expr) <= 1)
+    print("Number of constraints =", solver.NumConstraints())
+
+    # Budget Constraints
+    constraint_expr = \
+        [costs[routeVar[2]] * routeVar[0] for routeVar in routeVars]
+    solver.Add(sum(constraint_expr) <= budget)
+    print("Number of constraints =", solver.NumConstraints())
+
+    # Maximize W
+    solver.Maximize(W)
+    print(solver.ExportModelAsLpFormat(False).replace(
+        '\\', '').replace(',_', ','), sep='\n')
+
+    print(f"Solving with {solver.SolverVersion()}")
+    status = solver.Solve()
+    if status == pywraplp.Solver.OPTIMAL:
+        print("Solution:")
+        print("Objective value =", solver.Objective().Value())
+        print(f"Problem solved in {solver.wall_time():d} milliseconds")
+        print(f"Problem solved in {solver.iterations():d} iterations")
+        print(f"Problem solved in {solver.nodes():d} branch-and-bound nodes")
+        includedTriplets = []
+        length = 0
+        for routeVar in routeVars:
+            if routeVar[0].solution_value() == 1:
+                includedTriplets.append(routeVar)
+                length += routeVar[4]
+        width = solver.Objective().Value()
+        return [includedTriplets, width, length]
+
+    else:
+        print("The problem does not have an optimal solution.")
+        return []
+
+def corridorConstructor():
+    allLand = importData()
+    totalArea = 0
+    for landItem in allLand:
+        totalArea = landItem.area + totalArea
+
+    # according to the problem specifications, define the budget according to land area.
+    budget = totalArea * 0.15
+
+    allGates = findAllGates(allLand)
+    gatePairs = findGatePairs(polygons, triplet, allGates)
+    corePolygon = findCorePolygon(polygons, triplet, gatePairs)
+    triangulation = removeHoleTriangles(
+        corePolygon, triangulate(corePolygon, False))
+    gatePairs = convertGates(gatePairs, triangulation['vertices'])
+    startingGates = []
+    endingGates = []
+    for gatePair in gatePairs:
+        startingGates.append(gatePair[0])
+        endingGates.append(gatePair[1])
+    triangleEdgePairs = findTriangleEdgePairs(triangulation, startingGates, endingGates)
+    maxWidth = findMaxWidth(triangleEdgePairs)
+    for gatePair in gatePairs:
+        optimalRoute = constructOptimalRoute(
+            doubleEdgePairs(triangleEdgePairs, gatePair), maxWidth, maxLength_triplet, gatePair)
+        optimalRoutes.append(
+            [gatePair[0], gatePair[1], optimalRoute[0], optimalRoute[1]])
+
+    # quick and simple way of specifying start and end polygons.
+    # simply use the start and end parcels found in the original paper,
+    # as opposed to the separate habitats defined in the paper, because
+    # those exist outside of the land in question.
+    for polygon in allLand:
+        if polygon.contains((713183, 4297612)):
+            testStartPolygon = polygon
+        if polygon.contains((740410, 4282598)):
+            testEndPolygon = polygon
+
+    solve(testMaxWidth, testMaxLength, testOptimalRoutes, testStartPolygon,
+            testEndPolygon, testParcels, testPolygons, testCosts, budget)
+    
+    #get result of pathing solution, with binary decision variable.
+    allPolygons = None
+    finalPath = []
+    for polygon in allPolygons:
+        if #decision variable is 1:
+            finalPath.append(polygon)
+    
+    w = shp.Writer('./testfile')
+    w.field('name', 'C')
+    for shape in finalPath:
+        w.poly(shape)
+
+
+
+def convertGates(gatePairs, vertices):
+    newGatePair = []
+    for gatePair in gatePairs:
+        newPoints = []
+        for gate in gatePair:
+            gateVertices = []
+            for point in list(gate.coords):
+                for i, vertex in enumerate(vertices):
+                    if vertex[0] == point[0] and vertex[1] == point[1]:
+                        gateVertex = i
+                        break
+                gateVertices.append(gateVertex)
+            newPoints.append(orderEdge(gateVertices))
+        newGatePair.append(newPoints)
+    return newGatePair
+
+
+def doubleEdgePairs(triangleEdgePairs, gatePair):
+    startGate = gatePair[0]
+    endGate = gatePair[1]
+    newEdgePairs = []
+    for edgePair in triangleEdgePairs:
+        if (not ((edgePair[0][0] == startGate[0] and edgePair[0][1] == startGate[1])
+                 or (edgePair[1][0] == endGate[0] and edgePair[1][1] == endGate[1]))):
+            newEdgePair = [edgePair[1], edgePair[0], edgePair[2], edgePair[3]]
+            newEdgePairs.append(newEdgePair)
+    return triangleEdgePairs + newEdgePairs
+
+def groupGates(optimalRoutes):
+    gateDict = {}
+    newOptimalRoutes = []
+    for optimalRoute in optimalRoutes:
+        gate1Polygons = orderEdge(optimalRoute[0])
+        gate2Polygons = orderEdge(optimalRoute[1])
+        gate1Coords = optimalRoute[2]
+        gate2Coords = optimalRoute[3]
+        gate1Number = 0
+        gate2Number = 0
+        g1Key = '{}{}'.format(gate1Polygons[0], gate1Polygons[1])
+        g2Key = '{}{}'.format(gate2Polygons[0], gate2Polygons[1])
+        if g1Key not in gateDict:
+            gateDict[g1Key] = [gate1Coords]
+        else:
+            for i, coords in enumerate(gateDict[g1Key]):
+                if gate1Coords.equals(coords):
+                    gate1Number = i
+                    found = True
+            if not found:
+                gate1Number = len(gateDict[g1Key])
+                gateDict[g1Key].append(gate1Coords)
+        found = False
+        if g2Key not in gateDict:
+            gateDict[g2Key] = [gate2Coords]
+        else:
+            for i, coords in enumerate(gateDict[g2Key]):
+                if gate2Coords.equals(coords):
+                    gate2Number = i
+                    found = True
+            if not found:
+                gate2Number = len(gateDict[g2Key])
+                gateDict[g2Key].append(gate2Coords)
+        gate1Polygons.append(gate1Number)
+        gate2Polygons.append(gate2Number)
+        newOptimalRoutes.append([gate1Polygons,
+                                gate2Polygons,
+                                optimalRoute[4],
+                                optimalRoute[5]])
+    return newOptimalRoutes
+
+
+def createTriplets(polygons):
+    triplets = []
+    for i, polygon in enumerate(polygons):
+        otherPolygons = polygons.copy()
+        otherPolygons.pop(i)
+        surrounding = list(itertools.combinations(otherPolygons, 2))
+        for pair in surrounding:
+            triplet = [pair[0], polygon, pair[1]]
+            triplets.append(triplet)
+    return triplets
+
+
 allGates = findAllGates(polygons)
-gatePairs = findGatePairs(polygons, triplet, allGates)
-corePolygon = findCorePolygon(polygons, triplet, gatePairs)
-triangulation = removeHoleTriangles(
-    corePolygon, triangulate(corePolygon, False))
-triangleEdgePairs = findTriangleEdgePairs(triangulation)
+allOptimalRoutes = []
+for triplet in createTriplets([1, 2, 3, 4]):
+    if (polygons[triplet[0] - 1].touches(polygons[triplet[1] - 1])
+            and polygons[triplet[1] - 1].touches(polygons[triplet[2] - 1])):
+        gatePairs = findGatePairs(polygons, triplet, allGates)
+        if gatePairs:
+            corePolygon = findCorePolygon(polygons, triplet, gatePairs)
+            triangulation = removeHoleTriangles(
+                corePolygon, triangulate(corePolygon, False))
+            triangulationGatePairs = convertGates(
+                gatePairs, triangulation['vertices'])
+            startingGates = []
+            endingGates = []
+            for gatePair in triangulationGatePairs:
+                startingGates.append(gatePair[0])
+                endingGates.append(gatePair[1])
+            triangleEdgePairs = findTriangleEdgePairs(
+                triangulation, startingGates, endingGates)
+            maxWidth = findMaxWidth(triangleEdgePairs)
+            optimalRoutes = []
+            for i, gatePair in enumerate(triangulationGatePairs):
+                optimalRoute = constructOptimalRoute(
+                    doubleEdgePairs(triangleEdgePairs, gatePair), maxWidth, maxLength_triplet, gatePair)
+                optimalRoutes.append(
+                    [[triplet[0], triplet[1]],
+                     [triplet[1], triplet[2]],
+                     gatePairs[i][0], gatePairs[i][1],
+                     optimalRoute[0], optimalRoute[1]])
+            allOptimalRoutes += optimalRoutes
 
-ext = [(0, 4.5), (1.5, 7), (0, 8), (2, 9.5), (4.5, 8.5), (7.5, 8.5), (9.5, 9.5),
-       (10, 8), (9, 7), (7.5, 4.5), (10, 2.5), (9, 0), (5, 0), (5.5, 1.5), (3.5, 1.5)]
-int_1 = [(3.5, 3.5), (4, 5.5), (6.5, 6.5), (7.5, 5.5),
-         (6, 5), (6, 3), (5.5, 3.5)][::-1]
-int_2 = [(2, 5), (5, 7), (4, 8), (3, 8)]
-polygonWithHole = Polygon(ext, [int_1, int_2])
-
-
-triangulation2 = triangulate(polygonWithHole, False)
-triangulation2 = removeHoleTriangles(polygonWithHole, triangulation2)
-
-triangleEdgePairs2 = findTriangleEdgePairs(triangulation2)
-# triplets = list(itertools.combinations(polygons, 3))
+optimalRoutes = groupGates(allOptimalRoutes)
+testParcels = [[1], [2], [3], [4]]
+solve(maxWidth, maxLength_overall, optimalRoutes, 1,
+      4, testParcels, [1, 2, 3, 4], [15, 14, 18, 12], 60)
