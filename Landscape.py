@@ -7,6 +7,8 @@ import triangle as tr
 import itertools
 # import shapefile as shp TODO uncomment to test data importing.
 from shapely.plotting import plot_polygon, plot_points
+import shapefile as shp
+from ortools.linear_solver import pywraplp as linear
 from ortools.linear_solver import pywraplp
 
 
