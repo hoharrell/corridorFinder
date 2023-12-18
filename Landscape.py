@@ -5,7 +5,6 @@ import numpy as np
 import math
 import triangle as tr
 import itertools
-# import shapefile as shp TODO uncomment to test data importing.
 import shapefile as shp
 import fiona
 from ortools.linear_solver import pywraplp
