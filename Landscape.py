@@ -5,7 +5,6 @@ import numpy as np
 import math
 import triangle as tr
 import itertools
-# import shapefile as shp TODO uncomment to test data importing.
 import shapefile as shp
 import fiona
 from ortools.linear_solver import pywraplp
@@ -13,7 +12,9 @@ from shapely.plotting import plot_polygon, plot_points, plot_line
 from tri.delaunay.helpers import ToPointsAndSegments
 from tri.delaunay import triangulate
 # from sect.triangulation import triangulation
+import faulthandler
 
+faulthandler.enable()
 
 epsilon = 0.001
 maxLength_triplet = 1000  # arbitrary value, change later
@@ -70,19 +71,21 @@ def clusterMaker(polygons):
     return clusters
 
 
-def combinePolygons(polyA, polyB):
-    # combines two shapley polygons and returns a single polygon.
-    # has not been sufficiently tested yet
-    newList = ()
-    for coordB in polyB.coords:
-        for coordA in polyA.coords:
-            if (coordB != coordA):
-                newList = newList + coordB
-                newList = newList + coordA
+# def combinePolygons(polyA, polyB): TODO??
+#     # combines two shapley polygons and returns a single polygon.
+#     # has not been sufficiently tested yet
+#     newList = ()
+#     print(polyA.xy)
+#     # for i in range(len(polyBxy)):
+#     #     for j in range(len(polyB.xy)):
+#     #         ()
+#     #         if (polyB.xy):
+#     #             newList = newList + coordB
+#     #             newList = newList + coordA
 
-    combined = Polygon(newList)
+#     combined = Polygon(newList)
 
-    return combined
+#     return combined
 
 
 def exportData(polygons):
@@ -347,8 +350,7 @@ def computeAngle(a, b, c):
         input = -1
     if input > 1:
         input = 1
-    angle = math.degrees(math.acos(
-        input))
+    angle = math.degrees(math.acos(input))
     return angle
 
 
@@ -813,6 +815,7 @@ def createTriplets(polygons):
 
 def corridorConstructor():
     allLand = importData()
+    # allLand = clusterMaker(allLand) TODO: implement cluster maker if possible
     allLand = removeInvalidPolygons(allLand)
     totalArea = 0
     costs = []
