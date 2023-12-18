@@ -10,6 +10,9 @@ import shapefile as shp
 import fiona
 from ortools.linear_solver import pywraplp
 from shapely.plotting import plot_polygon, plot_points, plot_line
+from tri.delaunay.helpers import ToPointsAndSegments
+from tri.delaunay import triangulate
+# from sect.triangulation import triangulation
 
 
 epsilon = 0.001
@@ -277,26 +280,61 @@ def findCorePolygon(polygons, triplet, gatePairs):
     return corePolygon
 
 
-def triangulate(corePolygon, show):
+def findTriangulation(corePolygon, show):
     coreVertices = []
     for coordinate in list(corePolygon.exterior.coords):
         coreVertices.append(coordinate)
-    coreSegments = [(i, i+1) for i in range(len(coreVertices)-1)]
+    holeVertices = []
     for hole in list(corePolygon.interiors):
         for coordinate in list(hole.coords):
-            coreSegments.append((len(coreVertices), len(coreVertices) + 1))
-            coreVertices.append(coordinate)
-        coreSegments.pop()
+            holeVertices.append(coordinate)
+    pts_segs = ToPointsAndSegments()
+    if holeVertices:
+        pts_segs.add_polygon([coreVertices, holeVertices])
+    else:
+        pts_segs.add_polygon([coreVertices])
+    triangulation = triangulate(
+        pts_segs.points, pts_segs.infos, pts_segs.segments)
+    triangles = []
+    for triangle in triangulation.triangles:
+        if triangle.is_finite:
+            vertices = []
+            for vertex in triangle.vertices:
+                for i, point in enumerate(pts_segs.points):
+                    if vertex.x == point[0] and vertex.y == point[1]:
+                        vertices.append(i)
+                        break
+            triangles.append(vertices)
+    triDict = {}
+    triDict['triangles'] = triangles
+    triDict['segments'] = pts_segs.segments
+    triDict['vertices'] = pts_segs.points
+    return triDict
 
-    polygon = {
-        "vertices": coreVertices,
-        "segments": coreSegments
-    }
-    triangulation = tr.triangulate(polygon, 'p')
-    if (show):
-        tr.compare(plt, polygon, triangulation)
-        plt.show()
-    return triangulation
+    # # old library
+    # coreVertices = []
+    # for coordinate in list(corePolygon.exterior.coords):
+    #     coreVertices.append(coordinate)
+    # coreSegments = [(i, i+1) for i in range(len(coreVertices)-1)]
+    # holeVertices = []
+    # for hole in list(corePolygon.interiors):
+    #     for coordinate in list(hole.coords):
+    #         coreSegments.append((len(coreVertices), len(coreVertices) + 1))
+    #         coreVertices.append(coordinate)
+    #         holeVertices.append(coordinate)
+    #     coreSegments.pop()
+    # polygon = {
+    #     "vertices": coreVertices,
+    #     "segments": coreSegments
+    # }
+    # triangulation = tr.triangulate(polygon, 'p')
+    # if (show):
+    #     tr.compare(plt, polygon, triangulation)
+    #     plt.show()
+    # check1 = list(triangulation['triangles'])
+    # check2 = list(triangulation['segments'])
+    # check3 = list(triangulation['vertices'])
+    # return triangulation
 
 
 def midpoint(v1, v2):
@@ -310,7 +348,7 @@ def computeAngle(a, b, c):
     if input > 1:
         input = 1
     angle = math.degrees(math.acos(
-        (a ** 2 + c ** 2 - b ** 2) / (2 * a * c)))
+        input))
     return angle
 
 
@@ -339,7 +377,8 @@ def searchWidth(vertices, triangles, segments, triangle, C, edge, upperBound):
     if d > upperBound:
         return upperBound
     # checks if edge is in segments
-    if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
+    # if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
+    if c in segments or c[::-1] in segments:
         return d
     # can maybe compute this beforehand and store it
     newTriangle = triangleOpposite(triangles, edge, triangle)
@@ -374,7 +413,8 @@ def findWidth(vertices, triangles, segments, triangle, e1, e2, e3):
     # if c is a constrained edge
 
     # checks if c is in segments
-    if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
+    # if np.any(np.sum(np.abs(segments-c), axis=1) == 0) or np.any(np.sum(np.abs(segments-c[::-1]), axis=1) == 0):
+    if c in segments or c[::-1] in segments:
         return Point(vertices[C]).distance(LineString([vertices[c[0]], vertices[c[1]]]))
     return searchWidth(vertices, triangles, segments, triangle, C, c, d)
 
@@ -686,9 +726,9 @@ def convertGates(gatePairs, vertices, segments):
         for gate in gatePair:
             coords = list(gate.coords)
             for segment in allSegments:
-                comparison1 = vertices[segment[0]] == coords[0]
-                comparison2 = vertices[segment[1]] == coords[1]
-                if comparison1.all() and comparison2.all():
+                # comparison1 = vertices[segment[0]] == coords[0]
+                # comparison2 = vertices[segment[1]] == coords[1]
+                if vertices[segment[0]] == coords[0] and vertices[segment[1]] == coords[1]:
                     newPoints.append(list(orderEdge(segment)))
                     break
         newGatePair.append(newPoints)
@@ -788,24 +828,27 @@ def corridorConstructor():
     polygons = [i for i in range(len(allLand))]
     triplets = createTriplets(allLand)
     # triplets = [[7, 28, 31]]
-    for triplet in triplets:
+    # problemTriplets = [[53, 23, 94]]
+    for t, triplet in enumerate(triplets):
         print(triplet)
         # for polygon in triplet:
         #     plot_polygon(allLand[polygon], add_points=False)
         gatePairs = findGatePairs(allLand, triplet, allGates)
+        # if (t % 10 == 0):
+        #     print(t)
         if gatePairs:
             optimalRoutes = []
             corePolygon = findCorePolygon(allLand, triplet, gatePairs)
             if not corePolygon:
                 continue
             triangulation = removeHoleTriangles(
-                corePolygon, triangulate(corePolygon, False))
+                corePolygon, findTriangulation(corePolygon, False))
             triangulationGatePairs = convertGates(
                 gatePairs, triangulation['vertices'], triangulation['segments'])
             startingGates = []
             endingGates = []
             for gatePair in triangulationGatePairs:
-                if not gatePair:
+                if len(gatePair) < 2:
                     optimalRoutes.append([[triplet[0], triplet[1]],
                                           [triplet[1], triplet[2]],
                                           gatePairs[0][0], gatePairs[0][1],
@@ -817,7 +860,7 @@ def corridorConstructor():
                 triangulation, startingGates, endingGates)
             maxWidth = findMaxWidth(triangleEdgePairs)
             for i, gatePair in enumerate(triangulationGatePairs):
-                if gatePair:
+                if len(gatePair) == 2:
                     optimalRoute = constructOptimalRoute(
                         doubleEdgePairs(triangleEdgePairs, gatePair), maxWidth, maxLength_triplet, gatePair)
                     if optimalRoute:
@@ -836,9 +879,9 @@ def corridorConstructor():
     # as opposed to the separate habitats defined in the paper, because
     # those exist outside of the land in question.
     for polygon in allLand:
-        if polygon.contains((713183, 4297612)):
+        if polygon.contains(LineString([713183, 4297612])):
             testStartPolygon = polygon
-        if polygon.contains((740410, 4282598)):
+        if polygon.contains(LineString([740410, 4282598])):
             testEndPolygon = polygon
 
     solve(maxWidth, maxLength_overall, optimalRoutes, testStartPolygon,
