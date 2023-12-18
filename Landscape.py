@@ -35,7 +35,6 @@ def importData():
     # Polygon objects.
     sf = shp.Reader("./El Dorado.zip")
 
-    print(sf.records)
     polygons = []
     shapes = sf.shapes()
 
@@ -881,16 +880,17 @@ def corridorConstructor():
     # simply use the start and end parcels found in the original paper,
     # as opposed to the separate habitats defined in the paper, because
     # those exist outside of the land in question.
-    for polygon in allLand:
-        if polygon.contains(LineString([713183, 4297612])):
+    for polygon in polygons:
+        if polygon.contains(Point([713183, 4297612])):
             testStartPolygon = polygon
-        if polygon.contains(LineString([740410, 4282598])):
+        if polygon.contains(Point([740410, 4282598])):
             testEndPolygon = polygon
 
-    solve(maxWidth, maxLength_overall, optimalRoutes, testStartPolygon,
-          testEndPolygon, testParcels, polygons, costs, budget)
+    resultArray = solve(maxWidth, maxLength_overall, optimalRoutes, testStartPolygon,
+                    testEndPolygon, testParcels, polygons, costs, budget)
 
     # get result of pathing solution, with binary decision variable.
+    # TODO: write to shapefile
     allPolygons = None
     finalPath = []
     # for polygon in allPolygons:
