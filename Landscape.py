@@ -242,6 +242,11 @@ def findGatePairs(polygons, triplet, gates):
 def findCorePolygon(polygons, triplet, gatePairs):
     union = polygons[triplet[0]].union(
         polygons[triplet[1]]).union(polygons[triplet[2]])
+    # plot_polygon(union, add_points=False)
+    # for gatePair in gatePairs:
+    #     for gate in gatePair:
+    #         plot_line(gate)
+    # plt.show()
     lineSplitCollection = union.boundary
     gateCollection = gatePairs[0][0]
     for gatePair in gatePairs:
@@ -253,8 +258,13 @@ def findCorePolygon(polygons, triplet, gatePairs):
     borderLines = unary_union(mergedLines)
     decomposition = list(polygonize(borderLines))
     for polygon in list(decomposition):
+        # plot_polygon(polygon, add_points = False)
         if polygon.buffer(epsilon).covers(gateCollection):
             corePolygon = polygon
+    # for gatePair in gatePairs:
+    #     for gate in gatePair:
+    #         plot_line(gate)
+    # plt.show()
     return corePolygon
 
 
@@ -509,7 +519,7 @@ def constructOptimalRoute(triangleEdgePairs, maxWidth, maxLength, gatePair):
     status = solver.Solve()
     if status == pywraplp.Solver.OPTIMAL:
         # print("Solution:")
-        # print("Objective value =", solver.Objective().Value())
+        print("Objective value =", solver.Objective().Value())
         # print("Z =", Z.solution_value())
         includedEdgePairs = []
         length = 0
@@ -652,6 +662,7 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
 
 
 def convertGates(gatePairs, vertices, segments):
+    check1 = list(vertices)
     allSegments = list(segments)
     for segment in segments:
         allSegments.append(list(segment)[::-1])
@@ -760,10 +771,15 @@ def corridorConstructor():
 
     allGates = findAllGates(allLand)
     allOptimalRoutes = []
-    polygons = [i + 1 for i in range(len(allLand))]
-    for triplet in createTriplets(allLand):
+    polygons = [i for i in range(len(allLand))]
+    triplets = createTriplets(allLand)
+    for triplet in triplets:
+        # for polygon in triplet:
+        #     plot_polygon(allLand[polygon], add_points=False)
+        # plt.show()
         gatePairs = findGatePairs(allLand, triplet, allGates)
         if gatePairs:
+            optimalRoutes = []
             corePolygon = findCorePolygon(allLand, triplet, gatePairs)
             triangulation = removeHoleTriangles(
                 corePolygon, triangulate(corePolygon, False))
@@ -772,21 +788,27 @@ def corridorConstructor():
             startingGates = []
             endingGates = []
             for gatePair in triangulationGatePairs:
+                if not gatePair:
+                    optimalRoutes.append([[triplet[0], triplet[1]],
+                                          [triplet[1], triplet[2]],
+                                          gatePairs[0][0], gatePairs[0][1],
+                                          0.0, 0.0])
+                    continue
                 startingGates.append(gatePair[0])
                 endingGates.append(gatePair[1])
             triangleEdgePairs = findTriangleEdgePairs(
                 triangulation, startingGates, endingGates)
             maxWidth = findMaxWidth(triangleEdgePairs)
-            optimalRoutes = []
             for i, gatePair in enumerate(triangulationGatePairs):
-                optimalRoute = constructOptimalRoute(
-                    doubleEdgePairs(triangleEdgePairs, gatePair), maxWidth, maxLength_triplet, gatePair)
-                if optimalRoute:
-                    optimalRoutes.append(
-                        [[triplet[0], triplet[1]],
-                            [triplet[1], triplet[2]],
-                            gatePairs[i][0], gatePairs[i][1],
-                            optimalRoute[0], optimalRoute[1]])
+                if gatePair:
+                    optimalRoute = constructOptimalRoute(
+                        doubleEdgePairs(triangleEdgePairs, gatePair), maxWidth, maxLength_triplet, gatePair)
+                    if optimalRoute:
+                        optimalRoutes.append(
+                            [[triplet[0], triplet[1]],
+                                [triplet[1], triplet[2]],
+                                gatePairs[i][0], gatePairs[i][1],
+                                optimalRoute[0], optimalRoute[1]])
             allOptimalRoutes += optimalRoutes
 
     optimalRoutes = groupGates(allOptimalRoutes)
