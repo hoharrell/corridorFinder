@@ -257,10 +257,19 @@ def findCorePolygon(polygons, triplet, gatePairs):
     mergedLines = linemerge(lineSplitCollection)
     borderLines = unary_union(mergedLines)
     decomposition = list(polygonize(borderLines))
+    # for polygon in list(decomposition):
+    #     plot_polygon(polygon, add_points=False)
+    # plt.show()
+    corePolygon = False
     for polygon in list(decomposition):
-        # plot_polygon(polygon, add_points = False)
-        if polygon.buffer(epsilon).covers(gateCollection):
+        if (polygon.buffer(epsilon).covers(gateCollection) and
+                polygon.boundary.buffer(epsilon).covers(gateCollection)):
             corePolygon = polygon
+    # for gatePair in gatePairs:
+    #     for gate in gatePair:
+    #         plot_line(gate)
+    # plt.show()
+    # plot_polygon(corePolygon, add_points=False)
     # for gatePair in gatePairs:
     #     for gate in gatePair:
     #         plot_line(gate)
@@ -295,6 +304,11 @@ def midpoint(v1, v2):
 
 
 def computeAngle(a, b, c):
+    input = (a ** 2 + c ** 2 - b ** 2) / (2 * a * c)
+    if input < -1:
+        input = -1
+    if input > 1:
+        input = 1
     angle = math.degrees(math.acos(
         (a ** 2 + c ** 2 - b ** 2) / (2 * a * c)))
     return angle
@@ -773,14 +787,17 @@ def corridorConstructor():
     allOptimalRoutes = []
     polygons = [i for i in range(len(allLand))]
     triplets = createTriplets(allLand)
+    # triplets = [[7, 28, 31]]
     for triplet in triplets:
+        print(triplet)
         # for polygon in triplet:
         #     plot_polygon(allLand[polygon], add_points=False)
-        # plt.show()
         gatePairs = findGatePairs(allLand, triplet, allGates)
         if gatePairs:
             optimalRoutes = []
             corePolygon = findCorePolygon(allLand, triplet, gatePairs)
+            if not corePolygon:
+                continue
             triangulation = removeHoleTriangles(
                 corePolygon, triangulate(corePolygon, False))
             triangulationGatePairs = convertGates(
