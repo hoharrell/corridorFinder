@@ -56,32 +56,31 @@ def clusterMaker(polygons):
         for polygon_b in polygons:
             if not polygon_b.equals(polygon_a):
                 if polygon_a.touches(polygon_b) \
-                        and (combinePolygons(polygon_a, polygon_b).area <= 200000):
-                    clusters.append(combinePolygons(polygon_a, polygon_b))
+                        and (unary_union([polygon_a, polygon_b]).area <= 200000):
+                    clusters.append(unary_union([polygon_a, polygon_b]))
                 else:
                     clusters.append(polygon_a)
     for cluster in clusters:
         while (cluster.area <= 200000):
             for poly in polygons:
                 if cluster.touches(poly):
-                    if (combinePolygons(cluster, poly).area <= 200000):
-                        clusters.append(combinePolygons(cluster, poly))
+                    if (unary_union([cluster, poly]).area <= 200000):
+                        clusters.append(unary_union([cluster, poly]))
 
     return clusters
 
 
-# def combinePolygons(polyA, polyB): TODO??
+# def combinePolygons(polyA, polyB):
 #     # combines two shapley polygons and returns a single polygon.
 #     # has not been sufficiently tested yet
 #     newList = ()
 #     print(polyA.xy)
-#     # for i in range(len(polyBxy)):
-#     #     for j in range(len(polyB.xy)):
-#     #         ()
-#     #         if (polyB.xy):
-#     #             newList = newList + coordB
-#     #             newList = newList + coordA
-
+#     for i in range(len(polyB.xy)):
+#         for j in range(len(polyB.xy)):
+#             ()
+#             if (polyB.xy):
+#                 newList = newList + coordB
+#                 newList = newList + coordA
 #     combined = Polygon(newList)
 
 #     return combined
@@ -514,14 +513,14 @@ def constructOptimalRoute(triangleEdgePairs, maxWidth, maxLength, gatePair):
         vars.append([solver.IntVar(
             0.0, 1.0, 'Edge Pair ({}, {}) to ({}, {})'.format(pair[0][0], pair[0][1], pair[1][0], pair[1][1])), pair[3]])
         updateEdgeDict(edgeDict, pair[0], pair[1], vars[i][0])
-    # print("Number of variables =", solver.NumVariables())
+    print("Number of variables =", solver.NumVariables())
 
     # define constraints of variables
 
     # minimum width constraint
     for i, var in enumerate(vars):
         solver.Add(Z - M <= (triangleEdgePairs[i][2] - M) * var[0])
-    # print("Number of constraints =", solver.NumConstraints())
+    print("Number of constraints =", solver.NumConstraints())
 
     # max length constraint
     constraint_expr = \
@@ -564,18 +563,18 @@ def constructOptimalRoute(triangleEdgePairs, maxWidth, maxLength, gatePair):
             entering_expr = \
                 [var for var in entering]
             solver.Add(sum(entering_expr) - sum(leaving_expr) == 0)
-    # print("Number of constraints =", solver.NumConstraints())
+    print("Number of constraints =", solver.NumConstraints())
 
     solver.Maximize(Z)
-    # print(solver.ExportModelAsLpFormat(False).replace(
-    #     '\\', '').replace(',_', ','), sep='\n')
+    print(solver.ExportModelAsLpFormat(False).replace(
+        '\\', '').replace(',_', ','), sep='\n')
 
-    # print(f"Solving with {solver.SolverVersion()}")
+    print(f"Solving with {solver.SolverVersion()}")
     status = solver.Solve()
     if status == pywraplp.Solver.OPTIMAL:
-        # print("Solution:")
+        print("Solution:")
         print("Objective value =", solver.Objective().Value())
-        # print("Z =", Z.solution_value())
+        print("Z =", Z.solution_value())
         includedEdgePairs = []
         length = 0
         for var in vars:
@@ -583,8 +582,8 @@ def constructOptimalRoute(triangleEdgePairs, maxWidth, maxLength, gatePair):
                 includedEdgePairs.append(var)
                 length += var[1]
         return [solver.Objective().Value(), length]
-    # else:
-    #     # print("The problem does not have an optimal solution.")
+    else:
+        print("The problem does not have an optimal solution.")
 
 
 def addKey(gateDict, gate1, gate2, routeVar):
@@ -620,7 +619,7 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
         routeVars.append([solver.IntVar(
             0.0, 1.0, 'Gate {}-{}-{} to Gate {}-{}-{}'.format
             (route[0][0], route[0][1], route[0][2], route[1][0], route[1][1], route[1][2])),
-            route[0][0], route[0][1], route[1][1]], route[3])
+            route[0][0], route[0][1], route[1][1], route[3]])
         varDict[route[0][0]].append(routeVars[i])
         varDict[route[0][1]].append(routeVars[i])
         varDict[route[1][1]].append(routeVars[i])
@@ -629,7 +628,8 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
             startingGates.append(routeVars[i][0])
         if route[1][1] == endPolygon:
             endingGates.append(routeVars[i][0])
-        gateDict = addKey(gateDict, route[0], route[1], routeVars[i][0])
+        #removed gateDict = below
+        addKey(gateDict, route[0], route[1], routeVars[i][0])
     # should be polygons + 1
     print("Number of variables =", solver.NumVariables())
     # minimum width constraint
@@ -880,7 +880,7 @@ def corridorConstructor():
     # simply use the start and end parcels found in the original paper,
     # as opposed to the separate habitats defined in the paper, because
     # those exist outside of the land in question.
-    for polygon in polygons:
+    for polygon in allLand:
         if polygon.contains(Point([713183, 4297612])):
             testStartPolygon = polygon
         if polygon.contains(Point([740410, 4282598])):
