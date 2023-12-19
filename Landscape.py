@@ -831,7 +831,7 @@ def corridorConstructor():
     triplets = createTriplets(allLand)
     # triplets = [[7, 28, 31]]
     # problemTriplets = [[53, 23, 94]]
-    for t, triplet in enumerate(triplets):
+    for t, triplet in enumerate(triplets[400:]):
         print(triplet)
         # for polygon in triplet:
         #     plot_polygon(allLand[polygon], add_points=False)
@@ -874,7 +874,7 @@ def corridorConstructor():
             allOptimalRoutes += optimalRoutes
 
     optimalRoutes = groupGates(allOptimalRoutes)
-    testParcels = [[i+1] for i in range(len(allLand))]
+    testParcels = [[i] for i in range(len(allLand))]
 
     # quick and simple way of specifying start and end polygons.
     # simply use the start and end parcels found in the original paper,
