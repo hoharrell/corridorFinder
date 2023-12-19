@@ -921,10 +921,7 @@ def corridorConstructor():
     width = resultArray[1]  # optimal value
     length = resultArray[2]  # total length
 
-    w = shp.Writer('./testfile')
-    w.field('name', 'C')
-    for shape in finalPath:
-        w.poly(shape)
+    exportData(finalPath)
 
 
 corridorConstructor()
