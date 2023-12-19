@@ -597,10 +597,22 @@ def addKey(gateDict, gate1, gate2, routeVar):
         gateDict[endKey].append([routeVar, 1])
     else:
         gateDict[endKey] = [[routeVar, 1]]
+    return gateDict
+
+
+def doubleRoutes(optimalRoutes, startPolygon, endPolygon):
+    newRoutes = []
+    for route in optimalRoutes:
+        if route[4][2] != startPolygon and route[4][0] != endPolygon:
+            newRoutes.append(route)
+        if route[4][0] != startPolygon and route[4][2] != endPolygon:
+            newRoutes.append(
+                [route[1], route[0], route[2], route[3], route[4][::-1]])
+    return newRoutes
 
 
 def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels, polygons, costs, budget):
-    # assuming route is [gate1[p1, p2, gate#], gate2[p1, p2, gate#], width, length]
+    # assuming route is [gate1[p1, p2, gate#], gate2[p1, p2, gate#], width, length, triplet]
     # assuming parcels is [parcel1[p1, p2, p3, ...], parcel2[p1, p2, p3, ...], ...]
     varDict = {}
     for polygon in polygons:
@@ -619,16 +631,16 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
         routeVars.append([solver.IntVar(
             0.0, 1.0, 'Gate {}-{}-{} to Gate {}-{}-{}'.format
             (route[0][0], route[0][1], route[0][2], route[1][0], route[1][1], route[1][2])),
-            route[0][0], route[0][1], route[1][1], route[3]])
-        varDict[route[0][0]].append(routeVars[i])
-        varDict[route[0][1]].append(routeVars[i])
-        varDict[route[1][1]].append(routeVars[i])
+            route[0], route[1], route[1][1], route[3], route[4]])
+        varDict[route[4][0]].append([routeVars[i][0], 0])  # entry of triplet
+        varDict[route[4][1]].append([routeVars[i][0], 1])  # middle of triplet
+        varDict[route[4][2]].append([routeVars[i][0], 2])  # exit of triplet
 
-        if route[0][0] == startPolygon:
+        if route[4][0] == startPolygon:
             startingGates.append(routeVars[i][0])
-        if route[1][1] == endPolygon:
+        if route[4][2] == endPolygon:
             endingGates.append(routeVars[i][0])
-        #removed gateDict = below
+        # removed gateDict = below
         addKey(gateDict, route[0], route[1], routeVars[i][0])
     # should be polygons + 1
     print("Number of variables =", solver.NumVariables())
@@ -638,8 +650,8 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
     print("Number of constraints =", solver.NumConstraints())
     # maximum length constraint
     constraint_expr = \
-        [optimalRoutes[i][3] * routeVar[0]
-            for i, routeVar in enumerate(routeVars)]
+        [routeVar[4] * routeVar[0]
+            for routeVar in routeVars]
     solver.Add(sum(constraint_expr) <= maxLength)
     print("Number of constraints =", solver.NumConstraints())
     # starting gates constraint
@@ -656,7 +668,8 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
     # Connectivity constraints
 
     for gate, varList in gateDict.items():
-        if int(gate[0]) != startPolygon and int(gate[1]) != endPolygon:
+        gatePolygons = gate.split(',')
+        if '{}'.format(startPolygon) not in gatePolygons and '{}'.format(endPolygon) not in gatePolygons:
             starting = []
             ending = []
             for var in varList:
@@ -674,18 +687,31 @@ def solve(maxWidth, maxLength, optimalRoutes, startPolygon, endPolygon, parcels,
     # Parcel Constraints
 
     for parcel in parcels:
-        vars = set()
+        starts = set()
+        middle = set()
+        ends = set()
         for polygon in parcel:
             for var in (varDict[polygon]):
-                vars.add(var[0])
-        constraint_expr = \
-            [var for var in vars]
-        solver.Add(sum(constraint_expr) <= 1)
+                if var[1] == 0:
+                    starts.add(var[0])
+                elif var[1] == 1:
+                    middle.add(var[0])
+                else:
+                    ends.add(var[0])
+        starts_expr = \
+            [var for var in starts]
+        middle_expr = \
+            [var for var in middle]
+        ends_expr = \
+            [var for var in ends]
+        solver.Add(sum(starts_expr) <= 1)
+        solver.Add(sum(middle_expr) <= 1)
+        solver.Add(sum(ends_expr) <= 1)
     print("Number of constraints =", solver.NumConstraints())
 
     # Budget Constraints
     constraint_expr = \
-        [costs[routeVar[2]] * routeVar[0] for routeVar in routeVars]
+        [costs[routeVar[5][1]] * routeVar[0] for routeVar in routeVars]
     solver.Add(sum(constraint_expr) <= budget)
     print("Number of constraints =", solver.NumConstraints())
 
@@ -786,7 +812,8 @@ def groupGates(optimalRoutes):
         newOptimalRoutes.append([gate1Polygons,
                                 gate2Polygons,
                                 optimalRoute[4],
-                                optimalRoute[5]])
+                                optimalRoute[5],
+                                [optimalRoute[0][0], optimalRoute[0][1], optimalRoute[1][1]]])
     return newOptimalRoutes
 
 
@@ -829,15 +856,11 @@ def corridorConstructor():
     allOptimalRoutes = []
     polygons = [i for i in range(len(allLand))]
     triplets = createTriplets(allLand)
-    # triplets = [[7, 28, 31]]
-    # problemTriplets = [[53, 23, 94]]
-    for t, triplet in enumerate(triplets[400:]):
+    for triplet in triplets:
         print(triplet)
         # for polygon in triplet:
         #     plot_polygon(allLand[polygon], add_points=False)
         gatePairs = findGatePairs(allLand, triplet, allGates)
-        # if (t % 10 == 0):
-        #     print(t)
         if gatePairs:
             optimalRoutes = []
             corePolygon = findCorePolygon(allLand, triplet, gatePairs)
@@ -854,7 +877,7 @@ def corridorConstructor():
                     optimalRoutes.append([[triplet[0], triplet[1]],
                                           [triplet[1], triplet[2]],
                                           gatePairs[0][0], gatePairs[0][1],
-                                          0.0, 0.0])
+                                          LineString(gatePairs[0][0]).length, 0.0],)
                     continue
                 startingGates.append(gatePair[0])
                 endingGates.append(gatePair[1])
@@ -880,22 +903,23 @@ def corridorConstructor():
     # simply use the start and end parcels found in the original paper,
     # as opposed to the separate habitats defined in the paper, because
     # those exist outside of the land in question.
-    for polygon in allLand:
+    for i, polygon in enumerate(allLand):
         if polygon.contains(Point([713183, 4297612])):
-            testStartPolygon = polygon
+            testStartPolygon = i
         if polygon.contains(Point([740410, 4282598])):
-            testEndPolygon = polygon
+            testEndPolygon = i
 
-    resultArray = solve(maxWidth, maxLength_overall, optimalRoutes, testStartPolygon,
-                    testEndPolygon, testParcels, polygons, costs, budget)
+    resultArray = solve(maxWidth, maxLength_overall, doubleRoutes(optimalRoutes, testStartPolygon, testEndPolygon), testStartPolygon,
+                        testEndPolygon, testParcels, polygons, costs, budget)
 
     # get result of pathing solution, with binary decision variable.
     # TODO: write to shapefile
-    allPolygons = None
-    finalPath = []
-    # for polygon in allPolygons:
-    #     if #decision variable is 1:
-    #         finalPath.append(polygon)
+    finalPath = set()
+    for decision in resultArray[0]:
+        for poly in decision[5]:
+            finalPath.add(allLand[poly])
+    width = resultArray[1]  # optimal value
+    length = resultArray[2]  # total length
 
     w = shp.Writer('./testfile')
     w.field('name', 'C')
