@@ -1,0 +1,3 @@
+Human infrastructure has fractured wildlife habitats into isolated zones which restrict movement and separate members of animal species from one another, reducing genetic diversity and endangering species' survival.
+Linear optimization methods can be used to identify parcels of land for conservation to create a wildlife corridor connecting these isolated habitats, maximizing width of the pathway while minimizing cost.
+This project uses Python to create an optmal wildlife corridor for the Eldorado National Forest in California, replicating the findings in the paper "Optimizing the Geometry of Wildlife Corridors in Conservation Reserve Design" by St John et al (https://doi.org/10.1287/opre.2018.1758).
